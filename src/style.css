@@ -1,0 +1,18 @@
+:root {
+  --paper: #f5efe0; /* 宣纸 */
+  --ink: #1f1a17; /* 墨 */
+  --cinnabar: #c0392b; /* 朱砂 */
+  --font-serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-serif);
+}
+
+h1 {
+  color: var(--cinnabar);
+}

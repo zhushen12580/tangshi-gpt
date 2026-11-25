@@ -1,0 +1,33 @@
+{
+  "name": "tangshi-gpt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --base /tangshi-gpt/ --port 4173 --strictPort",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "build:data": "node scripts/build-dataset.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.9",
+    "@vitest/coverage-v8": "^5.1.1",
+    "opencc-js": "^1.4.2",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs-backend-cpu": "4.22.0",
+    "@tensorflow/tfjs-backend-webgl": "4.22.0",
+    "@tensorflow/tfjs-backend-webgpu": "4.22.0",
+    "@tensorflow/tfjs-core": "4.22.0"
+  }
+}
