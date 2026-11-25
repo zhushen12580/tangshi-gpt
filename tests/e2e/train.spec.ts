@@ -54,8 +54,9 @@ test('训练 200 步 loss 下降', async ({ page }) => {
   const initial = await num(page, 'loss-initial');
   expect(Math.abs(initial - (await num(page, 'loss-baseline')))).toBeLessThanOrEqual(0.5);
 
+  // 第 200 步的里程碑（验证 + 写一首诗）可能还在进行，暂停要等它做完
   await btn.click();
-  await expect(btn).toHaveText('继续');
+  await expect(btn).toHaveText('继续', { timeout: 60_000 });
   expect(await num(page, 'loss-current')).toBeLessThanOrEqual(initial * 0.85);
 
   await expect(empty).toBeHidden();

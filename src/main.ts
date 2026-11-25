@@ -1,9 +1,11 @@
 import './style.css';
 import { BACKEND_LABEL, initBackend } from './backend';
-import { loadDataset } from './data';
-import { MODEL_DEFAULTS, countParams } from './model';
+import { decode, loadDataset } from './data';
+import { MODEL_DEFAULTS, countParams, nextTokenLogits } from './model';
+import { DEFAULT_TEMPERATURE, isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
 import { Trainer, type TrainState, type TrainStats } from './train';
 import { drawLossChart } from './ui/lossChart';
+import { renderSamples } from './ui/samples';
 
 const $ = (testId: string) => document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
 const startToggle = $('start-toggle') as HTMLButtonElement;
@@ -23,9 +25,13 @@ function renderStats(s: TrainStats): void {
 
 const TOGGLE_TEXT: Record<TrainState, string> = { idle: '开始训练', running: '暂停', paused: '继续', nan: '继续' };
 
+let samples: SampleRecord[] = [];
+renderSamples($('samples'), samples);
+
 Promise.all([initBackend(location.search), loadDataset()])
   .then(([be, ds]) => {
     const V = ds.vocab.length;
+    const tokenIds = { bos: ds.bosId, comma: ds.stoi.get('，')!, period: ds.stoi.get('。')! };
     $('dataset-info').textContent = `数据集：${ds.poems.length} 首五言绝句 · 字表 ${V} 字 · 来自 chinese-poetry（MIT）`;
     $('loss-baseline').textContent = Math.log(V).toFixed(3);
     $('backend').textContent = BACKEND_LABEL[be.backend];
@@ -54,9 +60,27 @@ Promise.all([initBackend(location.search), loadDataset()])
         renderStats(s);
         queueDraw();
       },
-      onMilestone: (m) => {
+      onMilestone: async (m) => {
         $('loss-val').textContent = fmtLoss(m.valLoss);
         queueDraw();
+        // 训练循环会等这首诗写完再走下一步，采样不会和训练并发读写权重
+        const temperature = DEFAULT_TEMPERATURE; // ponytail: 温度和约束开关的控件在 Task 8 接上
+        const constrained = true;
+        const poem = await samplePoem((s) => nextTokenLogits(trainer.params, trainer.cfg, s), tokenIds, {
+          temperature,
+          constrain: constrained,
+        });
+        const text = decode(poem, ds.vocab);
+        samples = pushSample(samples, {
+          step: m.step,
+          valLoss: m.valLoss,
+          temperature,
+          constrained,
+          manual: false,
+          text,
+          formatOk: isWujue(text),
+        });
+        renderSamples($('samples'), samples);
       },
       onState: (s) => (startToggle.textContent = TOGGLE_TEXT[s]),
     });
