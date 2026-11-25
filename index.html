@@ -10,7 +10,18 @@
     <header>
       <h1>唐诗 GPT</h1>
       <p>不装 Python、不要显卡驱动、不要 API key，打开网页，看一个 GPT 在你的浏览器里从零学会写五言绝句。</p>
+      <dl class="meta">
+        <div><dt>后端</dt><dd class="badge" data-testid="backend">—</dd></div>
+        <div><dt>参数量</dt><dd data-testid="params">—</dd></div>
+        <div><dt>随机基线 ln(V)</dt><dd data-testid="loss-baseline">—</dd></div>
+      </dl>
+      <p data-testid="dataset-info">数据集：加载中…</p>
     </header>
+    <main>
+      <section class="controls">
+        <button type="button" data-testid="start-toggle" disabled>正在准备…</button>
+      </section>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
