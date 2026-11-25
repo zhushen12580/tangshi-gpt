@@ -15,11 +15,21 @@
         <div><dt>参数量</dt><dd data-testid="params">—</dd></div>
         <div><dt>随机基线 ln(V)</dt><dd data-testid="loss-baseline">—</dd></div>
       </dl>
+      <p class="notice" data-testid="backend-notice" hidden></p>
       <p data-testid="dataset-info">数据集：加载中…</p>
     </header>
     <main>
       <section class="controls">
         <button type="button" data-testid="start-toggle" disabled>正在准备…</button>
+      </section>
+      <section>
+        <dl class="meta">
+          <div><dt>步数</dt><dd data-testid="step">0</dd></div>
+          <div><dt>初始 loss</dt><dd data-testid="loss-initial">—</dd></div>
+          <div><dt>当前 loss</dt><dd data-testid="loss-current">—</dd></div>
+          <div><dt>步/秒</dt><dd data-testid="speed">0.0</dd></div>
+          <div><dt>已训练</dt><dd data-testid="elapsed">00:00</dd></div>
+        </dl>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

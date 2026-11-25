@@ -46,3 +46,8 @@ h1 {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+.notice {
+  color: var(--cinnabar);
+  white-space: pre-line; /* 每条提示占一行 */
+}

@@ -14,3 +14,8 @@ export async function waitReady(page: Page): Promise<void> {
 export async function num(page: Page, testId: string): Promise<number> {
   return parseFloat((await page.getByTestId(testId).textContent()) ?? '');
 }
+
+/** 等到步数 ≥ n（软件 WebGL 下 200 步要几分钟） */
+export async function waitForStep(page: Page, n: number, timeout = 540_000): Promise<void> {
+  await expect.poll(() => num(page, 'step'), { timeout }).toBeGreaterThanOrEqual(n);
+}
