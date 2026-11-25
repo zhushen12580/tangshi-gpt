@@ -129,3 +129,51 @@ test('连调两次 start() 也只有一个训练循环', async () => {
   await t.pause();
   expect(maxActive).toBe(1);
 });
+
+test('runBetweenSteps：idle 时立即执行；训练中排到两步之间执行，返回值能拿到，之后继续训练', async () => {
+  const t = make();
+  expect(await t.runBetweenSteps(async () => t.state)).toBe('idle');
+  expect(t.stats().step).toBe(0);
+
+  const step = t.step.bind(t);
+  let inStep = false;
+  vi.spyOn(t, 'step').mockImplementation(async () => {
+    inStep = true;
+    try {
+      await sleep(10); // 让一步跨过几个宏任务，下面才能在“步进行中”时插队
+      return await step();
+    } finally {
+      inStep = false;
+    }
+  });
+  t.start();
+  await untilStep(2);
+  await vi.waitFor(() => expect(inStep).toBe(true), { interval: 1 });
+  const seen: boolean[] = [];
+  const result = await t.runBetweenSteps(async () => {
+    seen.push(inStep);
+    await sleep(30); // 期间训练循环不能偷跑下一步
+    seen.push(inStep);
+    return 42;
+  });
+  expect(result).toBe(42);
+  expect(seen).toEqual([false, false]);
+  const after = t.stats().step;
+  await untilStep(after + 2);
+  expect(t.state).toBe('running');
+});
+
+test('暂停时跳过排在采样之后、尚未开始的训练步', async () => {
+  const t = make();
+  let finishSample!: () => void;
+  const sampleGate = new Promise<void>((resolve) => { finishSample = resolve; });
+  t.start();
+  const sample = t.runBetweenSteps(() => sampleGate);
+  // 第 0 步的里程碑完成后，第一步会排在本次采样之后。
+  await vi.waitFor(() => expect(t.valHistory).toHaveLength(1));
+  const paused = t.pause();
+  finishSample();
+  await sample;
+  await paused;
+  expect(t.stats().step).toBe(0);
+});

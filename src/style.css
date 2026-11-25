@@ -44,7 +44,24 @@ h1 {
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.controls output {
+  min-width: 2em; /* 拖动时数字宽度变化不让后面的控件跳动 */
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cinnabar);
+  outline-offset: 2px;
 }
 
 .notice {

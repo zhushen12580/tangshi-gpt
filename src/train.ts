@@ -54,6 +54,7 @@ export class Trainer {
   private runStartedAt: number | null = null; // 本段训练开始的时刻（不在训练中时为 null）
   private loop: Promise<void> | null = null;
   private stopRequested = false;
+  private chain: Promise<unknown> = Promise.resolve(); // 训练的每一步和插队任务都排在这条链上，彼此串行
 
   constructor(o: TrainerOptions) {
     this.o = o;
@@ -113,6 +114,16 @@ export class Trainer {
     return sum / val.length;
   }
 
+  /**
+   * 在两步之间执行 fn（立即生成、保存、查看注意力用）：训练中排到当前这一步（含里程碑）之后、下一步之前；
+   * 不在训练时立即执行。各任务之间也是串行的，不会并发读写权重
+   */
+  runBetweenSteps<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.chain.then(fn);
+    this.chain = result.catch(() => {}); // 出错只影响调用方，不卡住后面的任务
+    return result;
+  }
+
   /** 开始或继续训练；已经在跑时什么都不做，保证同一时刻只有一个循环 */
   start(): void {
     if (this.loop) return;
@@ -136,10 +147,14 @@ export class Trainer {
 
   private async run(): Promise<void> {
     try {
-      await this.milestoneIfDue(); // 第 0 步的里程碑在第一步训练之前
+      // 每一步也排在 runBetweenSteps 的链上，插队的任务就只会落在两步之间
+      await this.runBetweenSteps(() => this.milestoneIfDue()); // 第 0 步的里程碑在第一步训练之前
       while (!this.stopRequested) {
-        await this.step(); // 通过 this.step 调用，单测会 spy 它
-        await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
+        await this.runBetweenSteps(async () => {
+          if (this.stopRequested) return; // 等待采样时也可能收到暂停请求
+          await this.step(); // 通过 this.step 调用，单测会 spy 它
+          await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
+        });
         await new Promise((r) => setTimeout(r, 0)); // 让出主线程，界面才能刷新、响应点击
       }
     } finally {

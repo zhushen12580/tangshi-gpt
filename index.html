@@ -21,6 +21,13 @@
     <main>
       <section class="controls">
         <button type="button" data-testid="start-toggle" disabled>正在准备…</button>
+        <label>
+          温度
+          <input type="range" data-testid="temperature" min="0.1" max="1.5" step="0.1" value="0.8" aria-label="温度" />
+          <output data-testid="temperature-value">0.8</output>
+        </label>
+        <label><input type="checkbox" data-testid="constrain" checked /> 强制五绝格式</label>
+        <button type="button" data-testid="generate" disabled>立即生成</button>
       </section>
       <section>
         <dl class="meta">
