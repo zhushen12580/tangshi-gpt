@@ -12,6 +12,7 @@ export const MILESTONE_EVERY = 50;
 const CURRENT_WINDOW = 10; // 「当前 loss」取最近 10 步的平均
 const SPEED_WINDOW = 20; // 「步/秒」按最近 20 步计算
 const EMA_BETA = 0.9;
+const VAL_CHUNK = 64; // 验证集按 64 首一块做前向，显存占用不超过训练的一个 batch
 
 export type TrainState = 'idle' | 'running' | 'paused' | 'nan';
 
@@ -35,6 +36,7 @@ export interface TrainerOptions {
   rng?: () => number;
   onStep?: (s: TrainStats) => void;
   onState?: (s: TrainState) => void;
+  onMilestone?: (m: { step: number; valLoss: number }) => Promise<void> | void;
 }
 
 export class Trainer {
@@ -42,6 +44,7 @@ export class Trainer {
   params: Params;
   state: TrainState = 'idle';
   lossHistory: number[] = [];
+  valHistory: { step: number; loss: number }[] = [];
 
   private readonly o: TrainerOptions;
   private optimizer: tf.Optimizer;
@@ -93,6 +96,23 @@ export class Trainer {
     return value;
   }
 
+  /** 在整个验证集上做前向（不求梯度），返回平均 loss */
+  async evalValLoss(): Promise<number> {
+    const { val, bosId } = this.o;
+    let sum = 0;
+    for (let i = 0; i < val.length; i += VAL_CHUNK) {
+      const chunk = val.slice(i, i + VAL_CHUNK);
+      const loss = tf.tidy(() => {
+        const x = tf.tensor2d(chunk.map((p) => [bosId, ...p.slice(0, -1)]), undefined, 'int32');
+        const y = tf.tensor2d(chunk, undefined, 'int32');
+        return lossFn(this.params, this.cfg, x, y);
+      });
+      sum += (await loss.data())[0] * chunk.length; // 每首字数相同，按首数加权就是整体平均
+      loss.dispose();
+    }
+    return sum / val.length;
+  }
+
   /** 开始或继续训练；已经在跑时什么都不做，保证同一时刻只有一个循环 */
   start(): void {
     if (this.loop) return;
@@ -116,8 +136,10 @@ export class Trainer {
 
   private async run(): Promise<void> {
     try {
+      await this.milestoneIfDue(); // 第 0 步的里程碑在第一步训练之前
       while (!this.stopRequested) {
         await this.step(); // 通过 this.step 调用，单测会 spy 它
+        await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
         await new Promise((r) => setTimeout(r, 0)); // 让出主线程，界面才能刷新、响应点击
       }
     } finally {
@@ -126,6 +148,15 @@ export class Trainer {
       this.loop = null;
       this.setState('paused');
     }
+  }
+
+  /** 步数是 50 的倍数且这一步还没做过里程碑时：算验证 loss，记下来，再等回调（采样等）做完 */
+  private async milestoneIfDue(): Promise<void> {
+    const step = this.lossHistory.length;
+    if (step % MILESTONE_EVERY !== 0 || this.valHistory.at(-1)?.step === step) return;
+    const valLoss = await this.evalValLoss();
+    this.valHistory.push({ step, loss: valLoss });
+    await this.o.onMilestone?.({ step, valLoss });
   }
 
   private setState(s: TrainState): void {

@@ -28,6 +28,13 @@ test('训练 200 步 loss 下降', async ({ page }) => {
   expect(params).toBeGreaterThanOrEqual(0.8);
   expect(params).toBeLessThanOrEqual(1.3);
 
+  const empty = page.getByTestId('loss-empty');
+  await expect(empty).toBeVisible();
+  await expect(empty).toHaveText('点击「开始训练」后这里会画出 loss 曲线');
+  const chart = page.getByTestId('loss-chart');
+  const pixels = () => chart.evaluate((c: HTMLCanvasElement) => c.toDataURL());
+  const blank = await pixels();
+
   const btn = page.getByTestId('start-toggle');
   await btn.click();
   await expect(btn).toHaveText('暂停');
@@ -50,4 +57,9 @@ test('训练 200 步 loss 下降', async ({ page }) => {
   await btn.click();
   await expect(btn).toHaveText('继续');
   expect(await num(page, 'loss-current')).toBeLessThanOrEqual(initial * 0.85);
+
+  await expect(empty).toBeHidden();
+  expect(await pixels()).not.toBe(blank);
+  // 停在 ≥ 200 步时，第 200 步的验证 loss 已经算出
+  expect(await num(page, 'loss-val')).toBeLessThan(initial);
 });

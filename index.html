@@ -27,9 +27,15 @@
           <div><dt>步数</dt><dd data-testid="step">0</dd></div>
           <div><dt>初始 loss</dt><dd data-testid="loss-initial">—</dd></div>
           <div><dt>当前 loss</dt><dd data-testid="loss-current">—</dd></div>
+          <div><dt>验证 loss</dt><dd data-testid="loss-val">—</dd></div>
           <div><dt>步/秒</dt><dd data-testid="speed">0.0</dd></div>
           <div><dt>已训练</dt><dd data-testid="elapsed">00:00</dd></div>
         </dl>
+        <div class="chart">
+          <canvas data-testid="loss-chart" role="img" aria-label="训练 loss 曲线"></canvas>
+          <p class="empty" data-testid="loss-empty">点击「开始训练」后这里会画出 loss 曲线</p>
+        </div>
+        <p class="legend">细线：每步训练 loss · 粗线：平滑后（EMA）· 朱砂圆点：验证 loss</p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

@@ -3,9 +3,11 @@ import { BACKEND_LABEL, initBackend } from './backend';
 import { loadDataset } from './data';
 import { MODEL_DEFAULTS, countParams } from './model';
 import { Trainer, type TrainState, type TrainStats } from './train';
+import { drawLossChart } from './ui/lossChart';
 
 const $ = (testId: string) => document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
 const startToggle = $('start-toggle') as HTMLButtonElement;
+const lossChart = $('loss-chart') as HTMLCanvasElement;
 
 const fmtLoss = (x: number | null) => (x === null ? '—' : x.toFixed(3));
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -31,14 +33,37 @@ Promise.all([initBackend(location.search), loadDataset()])
     notice.textContent = be.notices.join('\n');
     notice.hidden = be.notices.length === 0;
 
+    // 用 requestAnimationFrame 合并重绘：每帧最多画一次
+    let drawQueued = false;
+    const queueDraw = () => {
+      if (drawQueued) return;
+      drawQueued = true;
+      requestAnimationFrame(() => {
+        drawQueued = false;
+        $('loss-empty').hidden = trainer.lossHistory.length + trainer.valHistory.length > 0;
+        drawLossChart(lossChart, trainer.lossHistory, trainer.valHistory);
+      });
+    };
+
     const trainer = new Trainer({
       cfg: { ...MODEL_DEFAULTS, vocabSize: V },
       train: ds.train,
       val: ds.val,
       bosId: ds.bosId,
-      onStep: renderStats,
+      onStep: (s) => {
+        renderStats(s);
+        queueDraw();
+      },
+      onMilestone: (m) => {
+        $('loss-val').textContent = fmtLoss(m.valLoss);
+        queueDraw();
+      },
       onState: (s) => (startToggle.textContent = TOGGLE_TEXT[s]),
     });
+    queueDraw(); // 先按实际尺寸画一次空画布
+    addEventListener('resize', queueDraw);
+    // 里程碑（验证、采样）期间没有 onStep，「已训练」也要继续走字
+    setInterval(() => trainer.state === 'running' && renderStats(trainer.stats()), 500);
     $('params').textContent = (countParams(trainer.params) / 1e6).toFixed(2) + 'M';
 
     // 暂停要等当前这一步结束，按钮文字由 onState 在循环真正停下后更新

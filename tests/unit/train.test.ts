@@ -80,6 +80,36 @@ test('start() 后 pause() 等当前步结束才返回，暂停期间步数和用
   expect(states).toEqual(['running', 'paused']);
 });
 
+test('初始验证 loss 接近 ln(V)，且不留下张量', async () => {
+  const t = make();
+  const before = tf.memory().numTensors;
+  const v = await t.evalValLoss();
+  expect(Math.abs(v - Math.log(11))).toBeLessThan(0.3);
+  expect(tf.memory().numTensors).toBe(before);
+});
+
+test('第 0 步和每 50 步做里程碑：先算验证 loss 再回调；停在第 50 步时它的里程碑也已完成', async () => {
+  const seen: { step: number; valLoss: number; trained: number }[] = [];
+  const t = make({
+    onMilestone: (m) => void seen.push({ ...m, trained: t.lossHistory.length }),
+    onStep: (s) => void (s.step === 50 && t.pause()),
+  });
+  t.start();
+  await vi.waitFor(() => expect(t.state).toBe('paused'), { timeout: 20_000 });
+  expect(t.stats().step).toBe(50);
+  expect(t.valHistory.map((v) => v.step)).toEqual([0, 50]);
+  expect(seen.map((m) => m.step)).toEqual([0, 50]);
+  expect(seen[0].trained).toBe(0); // 第 0 步的里程碑在第一步训练之前
+  expect(seen.map((m) => m.valLoss)).toEqual(t.valHistory.map((v) => v.loss));
+  expect(t.valHistory[1].loss).toBeLessThan(t.valHistory[0].loss);
+
+  // 继续训练时不会重复第 50 步的里程碑
+  t.start();
+  await untilStep(52);
+  await t.pause();
+  expect(t.valHistory.map((v) => v.step)).toEqual([0, 50]);
+});
+
 test('连调两次 start() 也只有一个训练循环', async () => {
   const t = make();
   const step = t.step.bind(t);
