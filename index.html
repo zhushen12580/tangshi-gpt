@@ -28,7 +28,12 @@
         </label>
         <label><input type="checkbox" data-testid="constrain" checked /> 强制五绝格式</label>
         <button type="button" data-testid="generate" disabled>立即生成</button>
+        <button type="button" data-testid="save" disabled>保存</button>
+        <button type="button" data-testid="load" disabled>载入</button>
+        <button type="button" data-testid="ignore-save" hidden>忽略</button>
+        <button type="button" data-testid="delete-save" disabled>删除存档</button>
       </section>
+      <p class="save-status" data-testid="save-status" role="status"></p>
       <section>
         <dl class="meta">
           <div><dt>步数</dt><dd data-testid="step">0</dd></div>

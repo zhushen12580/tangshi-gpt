@@ -1,5 +1,9 @@
 import './style.css';
 import { BACKEND_LABEL, initBackend } from './backend';
+import {
+  deleteCheckpoint, isCompatible, loadCheckpoint, makeCheckpoint, saveCheckpoint, storageErrorMessage,
+  type Checkpoint,
+} from './checkpoint';
 import { decode, loadDataset } from './data';
 import { MODEL_DEFAULTS, countParams, nextTokenLogits } from './model';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
@@ -37,7 +41,7 @@ let samples: SampleRecord[] = [];
 renderSamples($('samples'), samples);
 
 Promise.all([initBackend(location.search), loadDataset()])
-  .then(([be, ds]) => {
+  .then(async ([be, ds]) => {
     const V = ds.vocab.length;
     const tokenIds = { bos: ds.bosId, comma: ds.stoi.get('，')!, period: ds.stoi.get('。')! };
     $('dataset-info').textContent = `数据集：${ds.poems.length} 首五言绝句 · 字表 ${V} 字 · 来自 chinese-poetry（MIT）`;
@@ -94,6 +98,87 @@ Promise.all([initBackend(location.search), loadDataset()])
     // 里程碑（验证、采样）期间没有 onStep，「已训练」也要继续走字
     setInterval(() => trainer.state === 'running' && renderStats(trainer.stats()), 500);
     $('params').textContent = (countParams(trainer.params) / 1e6).toFixed(2) + 'M';
+
+    const saveBtn = $('save') as HTMLButtonElement;
+    const loadBtn = $('load') as HTMLButtonElement;
+    const deleteBtn = $('delete-save') as HTMLButtonElement;
+    const ignoreBtn = $('ignore-save') as HTMLButtonElement;
+    const saveStatus = $('save-status');
+    let checkpoint: Checkpoint | null = null;
+    let compatible = false;
+
+    const updateSaveButtons = () => {
+      saveBtn.disabled = checkpoint !== null && !compatible;
+      loadBtn.disabled = !compatible;
+      deleteBtn.disabled = checkpoint === null;
+    };
+    const runSaveAction = async (action: () => Promise<void>, errorMessage = storageErrorMessage) => {
+      saveBtn.disabled = loadBtn.disabled = deleteBtn.disabled = true;
+      ignoreBtn.hidden = true;
+      try {
+        await action();
+      } catch (error) {
+        saveStatus.textContent = errorMessage(error);
+      } finally {
+        updateSaveButtons();
+      }
+    };
+
+    try {
+      checkpoint = await loadCheckpoint();
+      if (checkpoint) {
+        compatible = isCompatible(checkpoint, ds.hash, trainer.cfg);
+        saveStatus.textContent = compatible
+          ? `发现存档：第 ${checkpoint.step} 步（${new Date(checkpoint.savedAt).toLocaleString('zh-CN')}）`
+          : '存档与当前数据集或模型不兼容';
+        ignoreBtn.hidden = !compatible;
+      }
+    } catch (error) {
+      saveStatus.textContent = `无法读取存档：${error instanceof Error ? error.message : String(error)}`;
+    }
+    updateSaveButtons();
+
+    ignoreBtn.addEventListener('click', () => {
+      ignoreBtn.hidden = true;
+      saveStatus.textContent = '';
+    });
+    saveBtn.addEventListener('click', () => runSaveAction(async () => {
+      saveStatus.textContent = '正在保存…';
+      const next = await trainer.runBetweenSteps(async () =>
+        makeCheckpoint(await trainer.snapshot(), ds.hash, trainer.cfg, samples),
+      );
+      await saveCheckpoint(next);
+      checkpoint = next;
+      compatible = true;
+      saveStatus.textContent = `已保存：第 ${next.step} 步`;
+    }));
+    loadBtn.addEventListener('click', () => {
+      const saved = checkpoint;
+      if (!saved || !compatible) return;
+      return runSaveAction(async () => {
+        startToggle.disabled = generateBtn.disabled = true;
+        try {
+          await trainer.restore(saved);
+          samples = [...saved.samples];
+          renderSamples($('samples'), samples);
+          renderStats(trainer.stats());
+          $('loss-val').textContent = fmtLoss(trainer.valHistory.at(-1)?.loss ?? null);
+          queueDraw();
+          saveStatus.textContent = `已载入：第 ${saved.step} 步`;
+        } finally {
+          startToggle.disabled = generateBtn.disabled = false;
+        }
+      }, (error) => `无法载入存档：${error instanceof Error ? error.message : String(error)}`);
+    });
+    deleteBtn.addEventListener('click', () => {
+      if (!confirm('确定删除存档？')) return;
+      return runSaveAction(async () => {
+        await deleteCheckpoint();
+        checkpoint = null;
+        compatible = false;
+        saveStatus.textContent = '存档已删除';
+      }, (error) => `无法删除存档：${error instanceof Error ? error.message : String(error)}`);
+    });
 
     // 暂停要等当前这一步结束，按钮文字由 onState 在循环真正停下后更新
     startToggle.addEventListener('click', () => (trainer.state === 'running' ? trainer.pause() : trainer.start()));

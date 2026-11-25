@@ -69,6 +69,15 @@ h1 {
   white-space: pre-line; /* 每条提示占一行 */
 }
 
+.save-status {
+  color: var(--cinnabar);
+  margin: 0;
+}
+
+.save-status:not(:empty) {
+  margin-block: 0.5rem;
+}
+
 .chart {
   position: relative;
 }
