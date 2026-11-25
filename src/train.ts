@@ -39,6 +39,15 @@ export interface TrainerOptions {
   onMilestone?: (m: { step: number; valLoss: number }) => Promise<void> | void;
 }
 
+export interface TrainerSnapshot {
+  step: number;
+  weights: Record<string, Float32Array>;
+  optimizer: { name: string; shape: number[]; data: Float32Array }[];
+  lossHistory: number[];
+  valHistory: { step: number; loss: number }[];
+  elapsedMs: number;
+}
+
 export class Trainer {
   readonly cfg: GPTConfig;
   params: Params;
@@ -49,6 +58,7 @@ export class Trainer {
   private readonly o: TrainerOptions;
   private optimizer: tf.Optimizer;
   private ema: number | null = null;
+  private lastMilestoneStep: number | null = null;
   private stepTimes: number[] = []; // 最近几步结束的时刻，算步/秒
   private elapsedBefore = 0; // 之前各段训练累计的时长
   private runStartedAt: number | null = null; // 本段训练开始的时刻（不在训练中时为 null）
@@ -140,6 +150,66 @@ export class Trainer {
     await this.loop;
   }
 
+  /** 训练中通过 runBetweenSteps 调用，确保所有数据来自同一步。 */
+  async snapshot(): Promise<TrainerSnapshot> {
+    const { step, elapsedMs } = this.stats();
+    const weights: TrainerSnapshot['weights'] = {};
+    for (const [name, tensor] of Object.entries(this.params)) {
+      weights[name] = new Float32Array(await tensor.data());
+    }
+    const adamWeights = await this.optimizer.getWeights();
+    try {
+      const optimizer: TrainerSnapshot['optimizer'] = [];
+      for (const { name, tensor } of adamWeights) {
+        optimizer.push({ name, shape: [...tensor.shape], data: new Float32Array(await tensor.data()) });
+      }
+      return {
+        step, weights, optimizer, elapsedMs,
+        lossHistory: [...this.lossHistory],
+        valHistory: this.valHistory.map((point) => ({ ...point })),
+      };
+    } finally {
+      // Adam 只为迭代次数创建临时张量，其余是优化器持有的矩变量。
+      adamWeights[0].tensor.dispose();
+    }
+  }
+
+  async restore(s: TrainerSnapshot): Promise<void> {
+    await this.pause();
+    await this.runBetweenSteps(async () => {
+      const entries = Object.entries(this.params);
+      const { weights, adamWeights } = tf.tidy(() => ({
+        weights: entries.map(([name, variable]) => tf.tensor(s.weights[name].slice(), variable.shape)),
+        adamWeights: s.optimizer.map(({ name, data, shape }, i) => ({
+          name, tensor: tf.tensor(data.slice(), shape, i === 0 ? 'int32' : 'float32'),
+        })),
+      }));
+      // setWeights 会替换矩变量，但不会释放旧变量。
+      const optimizer = tf.train.adam(this.o.lr ?? LEARNING_RATE);
+      try {
+        await optimizer.setWeights(adamWeights);
+        entries.forEach(([, variable], i) => variable.assign(weights[i]));
+      } catch (error) {
+        optimizer.dispose();
+        throw error;
+      } finally {
+        tf.dispose(weights);
+        tf.dispose(adamWeights.map(({ tensor }) => tensor));
+      }
+      this.optimizer.dispose();
+      this.optimizer = optimizer;
+      this.lossHistory = [...s.lossHistory];
+      this.valHistory = s.valHistory.map((point) => ({ ...point }));
+      this.elapsedBefore = s.elapsedMs;
+      this.stepTimes = [];
+      this.ema = this.lossHistory.reduce<number | null>(
+        (ema, loss) => ema === null ? loss : EMA_BETA * ema + (1 - EMA_BETA) * loss, null,
+      );
+      this.lastMilestoneStep = s.step;
+      this.setState('paused');
+    });
+  }
+
   dispose(): void {
     Object.values(this.params).forEach((v) => v.dispose());
     this.optimizer.dispose();
@@ -168,9 +238,10 @@ export class Trainer {
   /** 步数是 50 的倍数且这一步还没做过里程碑时：算验证 loss，记下来，再等回调（采样等）做完 */
   private async milestoneIfDue(): Promise<void> {
     const step = this.lossHistory.length;
-    if (step % MILESTONE_EVERY !== 0 || this.valHistory.at(-1)?.step === step) return;
+    if (step % MILESTONE_EVERY !== 0 || this.lastMilestoneStep === step) return;
     const valLoss = await this.evalValLoss();
     this.valHistory.push({ step, loss: valLoss });
+    this.lastMilestoneStep = step;
     await this.o.onMilestone?.({ step, valLoss });
   }
 

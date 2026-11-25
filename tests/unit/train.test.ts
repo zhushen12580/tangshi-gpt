@@ -41,6 +41,53 @@ afterEach(async () => {
   trainer.dispose();
 });
 
+test('恢复权重、历史和 Adam，使用相同 batch 继续训练时结果等价', async () => {
+  let random = mulberry32(1);
+  const a = make({ rng: () => random() });
+  const b = new Trainer({ cfg: MICRO, train: SEQS, val: SEQS.slice(0, 4), bosId: BOS,
+    batchSize: 8, lr: 1e-2, seed: 9, rng: () => random() });
+  try {
+    for (let i = 0; i < 5; i++) await a.step();
+    a.valHistory.push({ step: 0, loss: 2.4 });
+    const snapshot = await a.snapshot();
+    await b.step(); // 已有 Adam 矩变量，覆盖存档时应该释放旧变量
+    const before = tf.memory().numTensors;
+    await b.restore(snapshot);
+    const restored = await b.snapshot();
+    expect(tf.memory().numTensors).toBe(before);
+    expect(restored).toEqual(snapshot);
+    expect(b.state).toBe('paused');
+    expect(b.stats().step).toBe(5);
+    expect(b.stats().initialLoss).toBe(snapshot.lossHistory[0]);
+    expect(b.stats().ema).toBe(a.stats().ema);
+
+    random = mulberry32(42);
+    const expectedLoss = await a.step();
+    random = mulberry32(42);
+    expect(Math.abs(await b.step() - expectedLoss)).toBeLessThan(1e-4);
+    // step() 返回的是更新前的 loss，再比较更新后的模型以验证 Adam 动量。
+    expect(await b.evalValLoss()).toBeCloseTo(await a.evalValLoss(), 5);
+    expect(snapshot.lossHistory).toHaveLength(5);
+  } finally {
+    b.dispose();
+  }
+});
+
+test('训练中恢复第 0 步快照会先暂停，继续时不重复存档步的里程碑', async () => {
+  const milestones: number[] = [];
+  const t = make({ onMilestone: ({ step }) => { milestones.push(step); } });
+  const saved = await t.snapshot();
+  t.start();
+  await untilStep(2);
+  await t.restore(saved);
+  expect(t.state).toBe('paused');
+  expect(await t.snapshot()).toEqual(saved);
+  t.start();
+  await untilStep(1);
+  await t.pause();
+  expect(milestones).toEqual([0]);
+});
+
 test('step() 记录 loss 并更新统计，loss 下降', async () => {
   const t = make();
   for (let i = 0; i < 30; i++) await t.step();
