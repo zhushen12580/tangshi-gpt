@@ -197,3 +197,14 @@ export async function nextTokenLogits(p: Params, cfg: GPTConfig, ids: number[]):
   last.dispose();
   return out;
 }
+
+/** 读取单个样本的注意力概率，返回 [层][头][查询位置][键位置]。 */
+export async function attentionMaps(p: Params, cfg: GPTConfig, ids: number[]): Promise<number[][][][]> {
+  const layers = tf.tidy(() => forward(p, cfg, tf.tensor2d([ids], [1, ids.length], 'int32')).attn);
+  try {
+    const batches = await Promise.all(layers.map((layer) => layer.array()));
+    return batches.map(([sample]) => sample);
+  } finally {
+    tf.dispose(layers);
+  }
+}

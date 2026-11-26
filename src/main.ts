@@ -4,10 +4,12 @@ import {
   deleteCheckpoint, isCompatible, loadCheckpoint, makeCheckpoint, saveCheckpoint, storageErrorMessage,
   type Checkpoint,
 } from './checkpoint';
-import { decode, loadDataset } from './data';
-import { MODEL_DEFAULTS, countParams, nextTokenLogits } from './model';
+import { BOS, decode, encode, loadDataset } from './data';
+import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
+import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
 import { Trainer, type TrainState, type TrainStats } from './train';
+import { createHeatmap } from './ui/heatmap';
 import { drawLossChart } from './ui/lossChart';
 import { renderSamples } from './ui/samples';
 
@@ -51,6 +53,24 @@ Promise.all([initBackend(location.search), loadDataset()])
     notice.textContent = be.notices.join('\n');
     notice.hidden = be.notices.length === 0;
 
+    const heatmapSelect = $('heatmap-select') as HTMLSelectElement;
+    const latest = new Option('最新生成的诗', 'latest');
+    latest.disabled = true;
+    heatmapSelect.replaceChildren(...presets.map(({ title, poem }) => new Option(title, poem)), latest);
+    heatmapSelect.selectedIndex = 0;
+    const heatmap = createHeatmap($('heatmap'));
+    const syncLatestPoem = () => {
+      latest.disabled = samples.length === 0;
+      if (latest.disabled && latest.selected) heatmapSelect.selectedIndex = 0;
+    };
+    const refreshHeatmap = async () => {
+      const step = trainer.lossHistory.length;
+      const poem = latest.selected ? samples[0].text : heatmapSelect.value;
+      const prefix = [...poem].slice(0, trainer.cfg.ctx - 1);
+      const ids = [ds.bosId, ...encode(prefix.join(''), ds.stoi)];
+      heatmap.update(await attentionMaps(trainer.params, trainer.cfg, ids), [BOS, ...prefix], step);
+    };
+
     // 用 requestAnimationFrame 合并重绘：每帧最多画一次
     let drawQueued = false;
     const queueDraw = () => {
@@ -74,6 +94,8 @@ Promise.all([initBackend(location.search), loadDataset()])
       const text = decode(poem, ds.vocab);
       samples = pushSample(samples, { step, valLoss, temperature, constrained, manual, text, formatOk: isWujue(text) });
       renderSamples($('samples'), samples);
+      syncLatestPoem();
+      if (manual && latest.selected) await refreshHeatmap();
     };
 
     const trainer = new Trainer({
@@ -90,6 +112,7 @@ Promise.all([initBackend(location.search), loadDataset()])
         queueDraw();
         // 训练循环会等这首诗写完再走下一步，采样不会和训练并发读写权重
         await generate(m.step, m.valLoss, false);
+        await refreshHeatmap();
       },
       onState: (s) => (startToggle.textContent = TOGGLE_TEXT[s]),
     });
@@ -98,6 +121,9 @@ Promise.all([initBackend(location.search), loadDataset()])
     // 里程碑（验证、采样）期间没有 onStep，「已训练」也要继续走字
     setInterval(() => trainer.state === 'running' && renderStats(trainer.stats()), 500);
     $('params').textContent = (countParams(trainer.params) / 1e6).toFixed(2) + 'M';
+    await refreshHeatmap();
+    heatmapSelect.addEventListener('change', () => trainer.runBetweenSteps(refreshHeatmap));
+    heatmapSelect.disabled = false;
 
     const saveBtn = $('save') as HTMLButtonElement;
     const loadBtn = $('load') as HTMLButtonElement;
@@ -161,6 +187,8 @@ Promise.all([initBackend(location.search), loadDataset()])
           await trainer.restore(saved);
           samples = [...saved.samples];
           renderSamples($('samples'), samples);
+          syncLatestPoem();
+          await trainer.runBetweenSteps(refreshHeatmap);
           renderStats(trainer.stats());
           $('loss-val').textContent = fmtLoss(trainer.valHistory.at(-1)?.loss ?? null);
           queueDraw();

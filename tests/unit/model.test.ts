@@ -3,6 +3,7 @@ import * as tf from '@tensorflow/tfjs-core';
 import { beforeAll, expect, test } from 'vitest';
 import {
   MODEL_DEFAULTS,
+  attentionMaps,
   countParams,
   forward,
   initParams,
@@ -13,6 +14,29 @@ import {
 import { mulberry32 } from './rng';
 
 const MICRO: GPTConfig = { vocabSize: 11, ctx: 8, nLayer: 2, nHead: 2, dModel: 16, dFF: 32 };
+
+test('单首诗的注意力图按层和头排列，遵循因果遮罩且不保留张量', async () => {
+  const p = initParams(MICRO, 8);
+  try {
+    const before = tf.memory().numTensors;
+    const maps = await attentionMaps(p, MICRO, [1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(maps).toHaveLength(2);
+    for (const layer of maps) {
+      expect(layer).toHaveLength(2);
+      for (const head of layer) {
+        expect(head).toHaveLength(8);
+        head.forEach((row, i) => {
+          expect(row).toHaveLength(8);
+          expect(row.reduce((sum, w) => sum + w, 0)).toBeCloseTo(1, 5);
+          expect(row.slice(i + 1)).toEqual(Array(7 - i).fill(0));
+        });
+      }
+    }
+    expect(tf.memory().numTensors).toBe(before);
+  } finally {
+    tf.dispose(Object.values(p));
+  }
+});
 
 /** 用 mulberry32 生成 [rows, cols] 的随机 id */
 function randomIds(rows: number, cols: number, vocab: number, seed: number): tf.Tensor2D {
