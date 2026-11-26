@@ -29,6 +29,11 @@ button {
   cursor: pointer;
 }
 
+input,
+select {
+  font: inherit; /* 浏览器默认是 13px 无衬线体，和正文不一致 */
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -198,6 +203,7 @@ h1 {
 .heatmap-layout {
   display: grid;
   grid-template: auto auto / 1.75rem minmax(0, 1fr);
+  gap: 0.375rem; /* 放大图的焦点框（偏移 2px + 宽 2px）不压到轴标签 */
   width: min(100%, 36rem);
   align-items: stretch;
   text-align: center;
@@ -218,6 +224,11 @@ h1 {
 [data-testid="heatmap-axis-y"] {
   grid-area: 2 / 1;
   grid-template-rows: repeat(24, minmax(0, 1fr));
+}
+
+/* 窄屏时「<s>」比格子宽：靠右对齐，多出的部分伸进左边空白，不压到下一个字 */
+[data-testid="heatmap-axis-x"] span:first-child {
+  justify-self: end;
 }
 
 [data-testid="heatmap-main"] {
