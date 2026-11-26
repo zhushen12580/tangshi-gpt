@@ -8,6 +8,7 @@ import { initParams, lossFn, type GPTConfig, type Params } from './model';
 
 export const LEARNING_RATE = 2e-3;
 export const BATCH_SIZE = 64;
+export const CPU_BATCH_SIZE = 32; // CPU 后端 batch 64 一步约 30 秒，减半后第 1 步才能稳定在点击后 60 秒内出来
 export const MILESTONE_EVERY = 50;
 const CURRENT_WINDOW = 10; // 「当前 loss」取最近 10 步的平均
 const SPEED_WINDOW = 20; // 「步/秒」按最近 20 步计算

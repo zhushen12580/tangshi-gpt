@@ -1,5 +1,7 @@
+import '@tensorflow/tfjs-backend-cpu';
+import * as tf from '@tensorflow/tfjs-core';
 import { expect, test } from 'vitest';
-import { backendOrder, chooseBackend, type BackendName } from '../../src/backend';
+import { backendOrder, chooseBackend, initBackend, smokeTest, type BackendName } from '../../src/backend';
 
 test('backendOrder：auto 或缺省时为 webgpu → webgl → cpu', () => {
   const auto = { order: ['webgpu', 'webgl', 'cpu'], notices: [] };
@@ -46,4 +48,15 @@ test('chooseBackend：只有 cpu 成功时提示非常慢', async () => {
 
 test('chooseBackend：全部失败时 reject', async () => {
   await expect(chooseBackend(['webgpu', 'webgl', 'cpu'], only())).rejects.toThrow('没有可用的计算后端');
+});
+
+test('smokeTest：cpu 后端下通过，且不留下张量', async () => {
+  await tf.setBackend('cpu');
+  const before = tf.memory().numTensors;
+  expect(smokeTest()).toBe(true);
+  expect(tf.memory().numTensors).toBe(before);
+});
+
+test('initBackend：?backend=cpu 时用 cpu 并提示非常慢', async () => {
+  expect(await initBackend('?backend=cpu')).toEqual({ backend: 'cpu', notices: ['未使用 GPU 加速，训练会非常慢'] });
 });

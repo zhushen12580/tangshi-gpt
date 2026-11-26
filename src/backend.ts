@@ -1,6 +1,7 @@
 // 计算后端选择：?backend= 指定起点，按 webgpu → webgl → cpu 逐个尝试
 
 import * as tf from '@tensorflow/tfjs-core';
+import { initParams, lossFn, type GPTConfig, type Params } from './model';
 
 export type BackendName = 'webgpu' | 'webgl' | 'cpu';
 export const BACKEND_LABEL: Record<BackendName, string> = { webgpu: 'WebGPU', webgl: 'WebGL', cpu: 'CPU' };
@@ -40,13 +41,34 @@ const LOADERS: Record<BackendName, () => Promise<unknown>> = {
   cpu: () => import('@tensorflow/tfjs-backend-cpu'),
 };
 
+const SMOKE_CFG: GPTConfig = { vocabSize: 8, ctx: 4, nLayer: 1, nHead: 2, dModel: 8, dFF: 16 };
+
+/** 冒烟测试：微型模型跑一次前向加反向，不报错、loss 和梯度全是有限值才算可用；挡住缺梯度算子的后端 */
+export function smokeTest(): boolean {
+  let p: Params = {};
+  try {
+    p = initParams(SMOKE_CFG, 1);
+    return tf.tidy(() => {
+      const ids = tf.tensor2d([[0, 1, 2, 3]], [1, 4], 'int32');
+      const { value, grads } = tf.variableGrads(() => lossFn(p, SMOKE_CFG, ids, ids), Object.values(p));
+      const all = tf.concat([tf.reshape(value, [1]), ...Object.values(grads).map((g) => tf.reshape(g, [-1]))]);
+      return all.dataSync().every(Number.isFinite);
+    });
+  } catch (err) {
+    console.warn('冒烟测试失败', err);
+    return false;
+  } finally {
+    tf.dispose(Object.values(p));
+  }
+}
+
 export async function initBackend(search: string): Promise<{ backend: BackendName; notices: string[] }> {
   const { order, notices } = backendOrder(search);
   const chosen = await chooseBackend(order, async (b) => {
     await LOADERS[b]();
     const ok = await tf.setBackend(b);
     await tf.ready();
-    return ok;
+    return ok && smokeTest();
   });
   return { backend: chosen.backend, notices: [...notices, ...chosen.notices] };
 }

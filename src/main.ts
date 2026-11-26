@@ -4,11 +4,11 @@ import {
   deleteCheckpoint, isCompatible, loadCheckpoint, makeCheckpoint, saveCheckpoint, storageErrorMessage,
   type Checkpoint,
 } from './checkpoint';
-import { BOS, decode, encode, loadDataset, validateCustomPoem } from './data';
+import { BOS, decode, encode, loadDataset, validateCustomPoem, type Dataset } from './data';
 import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
-import { Trainer, type TrainState, type TrainStats } from './train';
+import { BATCH_SIZE, CPU_BATCH_SIZE, Trainer, type TrainState, type TrainStats } from './train';
 import { createHeatmap } from './ui/heatmap';
 import { drawLossChart } from './ui/lossChart';
 import { renderSamples } from './ui/samples';
@@ -42,16 +42,37 @@ const TOGGLE_TEXT: Record<TrainState, string> = { idle: '开始训练', running:
 let samples: SampleRecord[] = [];
 renderSamples($('samples'), samples);
 
-Promise.all([initBackend(location.search), loadDataset()])
-  .then(async ([be, ds]) => {
+// 后端先就绪就先显示徽章，不用等数据
+const backendReady = initBackend(location.search).then((be) => {
+  $('backend').textContent = BACKEND_LABEL[be.backend];
+  const notice = $('backend-notice');
+  notice.textContent = be.notices.join('\n');
+  notice.hidden = be.notices.length === 0;
+  return be.backend;
+});
+
+/** 加载失败时显示「重试」，点一次再加载一次，直到成功 */
+function loadDatasetWithRetry(): Promise<Dataset> {
+  return loadDataset().catch((err) => {
+    console.error(err);
+    $('dataset-info').hidden = true;
+    $('data-error').hidden = false;
+    return new Promise<Dataset>((resolve) =>
+      $('retry').addEventListener('click', () => {
+        $('data-error').hidden = true;
+        $('dataset-info').hidden = false;
+        resolve(loadDatasetWithRetry());
+      }, { once: true }),
+    );
+  });
+}
+
+Promise.all([backendReady, loadDatasetWithRetry()])
+  .then(async ([backend, ds]) => {
     const V = ds.vocab.length;
     const tokenIds = { bos: ds.bosId, comma: ds.stoi.get('，')!, period: ds.stoi.get('。')! };
     $('dataset-info').textContent = `数据集：${ds.poems.length} 首五言绝句 · 字表 ${V} 字 · 来自 chinese-poetry（MIT）`;
     $('loss-baseline').textContent = Math.log(V).toFixed(3);
-    $('backend').textContent = BACKEND_LABEL[be.backend];
-    const notice = $('backend-notice');
-    notice.textContent = be.notices.join('\n');
-    notice.hidden = be.notices.length === 0;
 
     const heatmapSelect = $('heatmap-select') as HTMLSelectElement;
     const latest = new Option('最新生成的诗', 'latest');
@@ -103,6 +124,7 @@ Promise.all([initBackend(location.search), loadDataset()])
       train: ds.train,
       val: ds.val,
       bosId: ds.bosId,
+      batchSize: backend === 'cpu' ? CPU_BATCH_SIZE : BATCH_SIZE,
       onStep: (s) => {
         renderStats(s);
         queueDraw();
@@ -234,7 +256,7 @@ Promise.all([initBackend(location.search), loadDataset()])
     generateBtn.disabled = false;
   })
   .catch((err) => {
-    // ponytail: 只给出文案；「重试」按钮在 Task 13 加
+    // 数据加载失败由「重试」处理；到这里只剩后端全部失败（cpu 实际总能用）或初始化代码出错
     console.error(err);
-    $('dataset-info').textContent = '数据集加载失败';
+    $('dataset-info').textContent = `初始化失败：${err instanceof Error ? err.message : String(err)}`;
   });
