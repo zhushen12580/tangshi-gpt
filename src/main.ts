@@ -4,7 +4,7 @@ import {
   deleteCheckpoint, isCompatible, loadCheckpoint, makeCheckpoint, saveCheckpoint, storageErrorMessage,
   type Checkpoint,
 } from './checkpoint';
-import { BOS, decode, encode, loadDataset } from './data';
+import { BOS, decode, encode, loadDataset, validateCustomPoem } from './data';
 import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
@@ -123,7 +123,21 @@ Promise.all([initBackend(location.search), loadDataset()])
     $('params').textContent = (countParams(trainer.params) / 1e6).toFixed(2) + 'M';
     await refreshHeatmap();
     heatmapSelect.addEventListener('change', () => trainer.runBetweenSteps(refreshHeatmap));
-    heatmapSelect.disabled = false;
+    // 校验通过才换诗；「自定义」选项第一次成功时加到下拉框末尾，之后只改它的诗
+    const heatmapInput = $('heatmap-input') as HTMLInputElement;
+    const viewBtn = $('heatmap-view') as HTMLButtonElement;
+    const custom = new Option('自定义');
+    heatmapInput.form!.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const result = validateCustomPoem(heatmapInput.value, ds.stoi);
+      $('heatmap-error').textContent = result.ok ? '' : result.error;
+      if (!result.ok) return;
+      custom.value = result.poem;
+      heatmapSelect.add(custom);
+      custom.selected = true;
+      trainer.runBetweenSteps(refreshHeatmap);
+    });
+    heatmapSelect.disabled = heatmapInput.disabled = viewBtn.disabled = false;
 
     const saveBtn = $('save') as HTMLButtonElement;
     const loadBtn = $('load') as HTMLButtonElement;

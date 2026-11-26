@@ -11,7 +11,9 @@ export interface Heatmap {
   select(layer: number, head: number): void;
 }
 
-function draw(canvas: HTMLCanvasElement, weights: number[][]): void {
+type Cell = { row: number; col: number };
+
+function draw(canvas: HTMLCanvasElement, weights: number[][], cell?: Cell): void {
   const width = Math.round(canvas.getBoundingClientRect().width * devicePixelRatio);
   if (!width) return;
   if (canvas.width !== width || canvas.height !== width) {
@@ -27,6 +29,15 @@ function draw(canvas: HTMLCanvasElement, weights: number[][]): void {
       ctx.fillRect(boundary(j), boundary(i), boundary(j + 1) - boundary(j), boundary(i + 1) - boundary(i));
     }
   });
+  if (cell) {
+    // 朱砂描边画在格子里面，不盖住相邻格
+    const line = 2 * devicePixelRatio;
+    const x = boundary(cell.col);
+    const y = boundary(cell.row);
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = line;
+    ctx.strokeRect(x + line / 2, y + line / 2, boundary(cell.col + 1) - x - line, boundary(cell.row + 1) - y - line);
+  }
 }
 
 export function createHeatmap(root: HTMLElement): Heatmap {
@@ -53,9 +64,44 @@ export function createHeatmap(root: HTMLElement): Heatmap {
   let layer = 0;
   let head = 0;
   let maps: number[][][][] | undefined;
+  let labels: string[] = [];
+  let cell: Cell | undefined;
   const drawMain = () => {
-    if (maps) draw(main, maps[layer][head]);
+    if (!maps) return;
+    const weights = maps[layer][head];
+    draw(main, weights, cell);
+    if (cell) {
+      readout.textContent = `「${labels[cell.row]}」看「${labels[cell.col]}」：${weights[cell.row][cell.col].toFixed(2)}`;
+    }
   };
+  // 高亮格只在下三角：行夹在 0–23，列夹在 0–行
+  const moveTo = (row: number, col: number) => {
+    const last = labels.length - 1;
+    const r = Math.min(last, Math.max(0, row));
+    cell = { row: r, col: Math.min(r, Math.max(0, col)) };
+    drawMain();
+  };
+  const ARROWS: Record<string, Cell> = {
+    ArrowUp: { row: -1, col: 0 },
+    ArrowDown: { row: 1, col: 0 },
+    ArrowLeft: { row: 0, col: -1 },
+    ArrowRight: { row: 0, col: 1 },
+  };
+  main.addEventListener('focus', () => {
+    if (!cell && maps) moveTo(0, 0);
+  });
+  main.addEventListener('keydown', (e) => {
+    const d = ARROWS[e.key];
+    if (!d || !maps) return;
+    e.preventDefault(); // 不让方向键滚动页面
+    moveTo((cell?.row ?? 0) + d.row, (cell?.col ?? 0) + d.col);
+  });
+  main.addEventListener('mousemove', (e) => {
+    if (!maps) return;
+    const rect = main.getBoundingClientRect();
+    const n = labels.length;
+    moveTo(Math.floor((e.clientY - rect.top) / rect.height * n), Math.floor((e.clientX - rect.left) / rect.width * n));
+  });
   const buttons = Array.from({ length: nLayer * nHead }, (_, i) => {
     const l = Math.floor(i / nHead);
     const h = i % nHead;
@@ -81,8 +127,9 @@ export function createHeatmap(root: HTMLElement): Heatmap {
 
   return {
     select,
-    update(nextMaps, labels, step) {
+    update(nextMaps, nextLabels, step) {
       maps = nextMaps;
+      labels = nextLabels;
       for (const axis of [axisX, axisY]) {
         axis.replaceChildren(...labels.map((label) => {
           const span = document.createElement('span');

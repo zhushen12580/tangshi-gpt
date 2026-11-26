@@ -55,7 +55,12 @@
       </section>
       <section>
         <h2>注意力</h2>
-        <label>诗句 <select data-testid="heatmap-select" disabled></select></label>
+        <form class="controls">
+          <label>诗句 <select data-testid="heatmap-select" disabled></select></label>
+          <label>自定义 <input data-testid="heatmap-input" aria-label="自定义诗" disabled /></label>
+          <button type="submit" data-testid="heatmap-view" disabled>查看</button>
+        </form>
+        <p class="notice" data-testid="heatmap-error" role="alert"></p>
         <div data-testid="heatmap"></div>
       </section>
     </main>

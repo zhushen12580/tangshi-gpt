@@ -9,6 +9,7 @@ import {
   loadDataset,
   makeBatch,
   splitTrainVal,
+  validateCustomPoem,
   vocabHash,
   type PoemsFile,
 } from '../../src/data';
@@ -80,4 +81,29 @@ test('loadDataset 成功时返回 Dataset', async () => {
 test('loadDataset 收到 404 时 reject，错误信息含 404', async () => {
   const fakeFetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
   await expect(loadDataset('data/poems.json', fakeFetch)).rejects.toThrow('404');
+});
+
+test('validateCustomPoem 通过时补上「，。，。」', () => {
+  const { stoi } = createDataset(file);
+  const poem = '床前明月光，疑是地上霜。举头望明月，低头思故乡。';
+  expect(validateCustomPoem(poem, stoi)).toEqual({ ok: true, poem });
+});
+
+test('validateCustomPoem 去掉各种空白和中英文标点', () => {
+  const { stoi } = createDataset(file);
+  expect(validateCustomPoem('床前明月光, 疑是地上霜\n举头望明月　低头思故乡', stoi)).toEqual({
+    ok: true,
+    poem: '床前明月光，疑是地上霜。举头望明月，低头思故乡。',
+  });
+});
+
+test('validateCustomPoem 先报字表外的字符，再报字数', () => {
+  const { stoi } = createDataset(file);
+  expect(validateCustomPoem('床前明月光疑是地上霜举头望明月低头思ok', stoi)).toEqual({
+    ok: false,
+    error: '以下字符不在字表中：o、k',
+  });
+  expect(validateCustomPoem('okko床', stoi)).toEqual({ ok: false, error: '以下字符不在字表中：o、k' });
+  expect(validateCustomPoem('床前明月光', stoi)).toEqual({ ok: false, error: '需要恰好 20 个汉字（当前 5 个）' });
+  expect(validateCustomPoem('', stoi)).toEqual({ ok: false, error: '需要恰好 20 个汉字（当前 0 个）' });
 });

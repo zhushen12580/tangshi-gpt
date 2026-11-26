@@ -85,3 +85,15 @@ export async function loadDataset(url = 'data/poems.json', fetchFn: typeof fetch
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return createDataset(await res.json());
 }
+
+/** 自定义诗：去掉空白和标点 → 报字表外的字（去重、按出现顺序）→ 要恰好 20 字，通过后补上「，。，。」 */
+export function validateCustomPoem(
+  raw: string,
+  stoi: Map<string, number>,
+): { ok: true; poem: string } | { ok: false; error: string } {
+  const chars = [...raw.replace(/[\s\p{P}]/gu, '')];
+  const unknown = [...new Set(chars.filter((c) => !stoi.has(c)))];
+  if (unknown.length) return { ok: false, error: `以下字符不在字表中：${unknown.join('、')}` };
+  if (chars.length !== 20) return { ok: false, error: `需要恰好 20 个汉字（当前 ${chars.length} 个）` };
+  return { ok: true, poem: chars.map((c, i) => c + (i % 10 === 4 ? '，' : i % 10 === 9 ? '。' : '')).join('') };
+}
