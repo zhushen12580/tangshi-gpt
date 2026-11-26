@@ -114,6 +114,7 @@ h1 {
 .notice {
   color: var(--cinnabar);
   white-space: pre-line; /* 每条提示占一行 */
+  overflow-wrap: anywhere; /* 提示里可能有很长的无空格串（如 ?backend= 的值），窄屏下也要折行 */
 }
 
 .save-status {

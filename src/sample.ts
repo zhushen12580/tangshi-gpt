@@ -17,7 +17,6 @@ export interface SampleRecord {
 }
 
 export const MAX_SAMPLES = 200;
-export const DEFAULT_TEMPERATURE = 0.8;
 const POEM_LEN = 24;
 const WUJUE_RE = /^([一-鿿]{5}，[一-鿿]{5}。){2}$/u;
 

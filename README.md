@@ -21,7 +21,7 @@ About 1500 steps in roughly 3 minutes is the design target, and it assumes an or
 
 ## Requirements
 
-- Node.js and npm. Vite needs Node.js 20.19+; the unit tests (Vitest) need 22.12+. Developed on Node.js 22.20.
+- Node.js 22.12+ (22.x), 24.x or 26+, and npm. This is the `engines` range in `package.json`: Vitest 5, used by the unit tests, supports only these versions (Vite 8 alone would also run on 20.19+). Older releases such as Node.js 20.0 cannot even start Vite. Developed on Node.js 22.20.
 - Chrome or Edge 113+ recommended (WebGPU). Other browsers fall back to WebGL.
 
 The dataset ships with the repository, so running the app needs no network access.
@@ -51,7 +51,7 @@ If the requested backend fails, the page falls back to the next one and says so.
 
 ## Using the page
 
-- **开始训练 / 暂停 / 继续** (Start / Pause / Resume): start or pause the training loop. **重置** (Reset) re-initializes the model; saved checkpoints are kept.
+- **开始训练 / 暂停 / 继续** (Start / Pause / Resume): start or pause the training loop. Pausing takes effect at once; if the validation loss and poem of a 50-step milestone are still being computed, they finish in the background and then appear. **重置** (Reset) re-initializes the model; saved checkpoints are kept.
 - **温度** (Temperature): sampling temperature, 0.1–1.5, default 0.8.
 - **强制五绝格式** (Force quatrain format): when checked, sampling is constrained to 4 lines of 5 characters with the punctuation 「，。，。」. Uncheck it to see whether the model has learned the format by itself; free samples get a 「格式 ✓」 or 「格式 ✗」 badge.
 - **立即生成** (Generate now): write a poem right away, even at step 0 before training. While training, it appears after the current step finishes; training is not interrupted.
@@ -74,7 +74,7 @@ npm run test:e2e
 - `npm test` runs the Vitest unit tests in Node.
 - `npm run test:coverage` checks ≥ 80% line coverage of the core modules.
 - `npx playwright install chromium` is only needed once.
-- `npm run test:e2e` builds the app, serves it at http://localhost:4173/tangshi-gpt/ and runs the Playwright tests in Chromium. Port 4173 must be free. Training runs on software WebGL, so the whole run takes a while: 23 tests took about 20 minutes on the development machine.
+- `npm run test:e2e` builds the app, serves it at http://localhost:4173/tangshi-gpt/ and runs the Playwright tests in Chromium. Port 4173 must be free. Training runs on software WebGL, so the whole run takes a while: 26 tests took about 20 minutes on the development machine.
 
 ## Build and preview
 
@@ -85,6 +85,10 @@ npm run preview
 
 Open http://localhost:4173/tangshi-gpt/ (keep the trailing slash). The output in `dist/` is plain static files that work under any sub-path, e.g. GitHub Pages.
 
+### Deploy to GitHub Pages
+
+In the repository settings, set **Pages → Source** to **GitHub Actions**. On every push to `main`, [`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs `npm ci`, `npm test` and `npm run build`, then deploys `dist/` to `https://<owner>.github.io/tangshi-gpt/`. The e2e tests are not part of the workflow (hosted runners have no GPU, so software WebGL training is too slow); run them locally.
+
 ## Dataset
 
 `public/data/poems.json` holds 3672 strict five-character quatrains (5 characters + punctuation × 4 lines), converted to Simplified Chinese. They come from [chinese-poetry](https://github.com/chinese-poetry/chinese-poetry) (MIT) at the fixed commit `b8594f81a89752241442f2ce267d6f66f96704ee`. To rebuild it byte-for-byte (needs network access):
@@ -93,7 +97,7 @@ Open http://localhost:4173/tangshi-gpt/ (keep the trailing slash). The output in
 npm run build:data
 ```
 
-If `raw.githubusercontent.com` is slow or unreachable, point `CHINESE_POETRY_BASE` at a mirror (or at a local clone of chinese-poetry checked out at that commit).
+If `raw.githubusercontent.com` is slow or unreachable, point `CHINESE_POETRY_BASE` at a mirror (or at a local clone of chinese-poetry checked out at that commit). [`.env.example`](.env.example) documents the variable; the script reads it from your shell, not from a `.env` file.
 
 PowerShell:
 

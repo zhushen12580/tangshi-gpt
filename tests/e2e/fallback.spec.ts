@@ -9,8 +9,14 @@ test('没有 WebGPU 时降级到 WebGL', async ({ page }) => {
   await expect(page.getByTestId('backend-notice')).toContainText('WebGPU 不可用，已改用 WebGL');
 });
 
-test('数据集加载失败时可以重试', async ({ page }) => {
-  await page.route('**/data/poems.json', (r) => r.fulfill({ status: 404, body: '' }));
+// 404 和「HTTP 200 但数据不能用」都要走重试
+const BAD_RESPONSES = [
+  { name: '404', fulfill: { status: 404, body: '' } },
+  { name: '空数据集', fulfill: { json: { poems: [] } } },
+];
+
+for (const { name, fulfill } of BAD_RESPONSES) test(`数据集加载失败时可以重试（${name}）`, async ({ page }) => {
+  await page.route('**/data/poems.json', (r) => r.fulfill(fulfill));
   await openApp(page, '?backend=webgl');
   await expect(page.getByTestId('data-error')).toContainText('数据集加载失败');
   const retry = page.getByTestId('retry');
@@ -28,6 +34,14 @@ test('未知后端按自动模式选择并提示', async ({ page }) => {
   await waitReady(page);
   await expect(page.getByTestId('backend-notice')).toContainText('未知后端 foo，已自动选择');
   await expect(page.getByTestId('backend')).toHaveText(/^(WebGPU|WebGL|CPU)$/);
+});
+
+test('很长的未知后端值在窄屏下折行，不出现横向滚动', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page, '?backend=' + 'x'.repeat(500));
+  await waitReady(page);
+  await expect(page.getByTestId('backend-notice')).toContainText('，已自动选择');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
 
 test('只用 CPU 时提示非常慢，仍能训练', async ({ page }) => {

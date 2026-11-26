@@ -76,8 +76,10 @@ test('恢复权重、历史和 Adam，使用相同 batch 继续训练时结果�
 test('训练中恢复第 0 步快照会先暂停，继续时不重复存档步的里程碑', async () => {
   const milestones: number[] = [];
   const t = make({ onMilestone: ({ step }) => { milestones.push(step); } });
-  const saved = await t.snapshot();
   t.start();
+  const saved = await t.runBetweenSteps(() => t.snapshot()); // 排在第 0 步里程碑之后、第一步之前
+  expect(saved.step).toBe(0);
+  expect(saved.valHistory.map((v) => v.step)).toEqual([0]);
   await untilStep(2);
   await t.restore(saved);
   expect(t.state).toBe('paused');
@@ -86,6 +88,73 @@ test('训练中恢复第 0 步快照会先暂停，继续时不重复存档步�
   await untilStep(1);
   await t.pause();
   expect(milestones).toEqual([0]);
+});
+
+test('载入训练前保存的存档（还没有验证 loss）后继续：第 0 步里程碑做且只做一次', async () => {
+  const milestones: number[] = [];
+  const t = make({ onMilestone: ({ step }) => { milestones.push(step); } });
+  const saved = await t.snapshot();
+  expect(saved.valHistory).toEqual([]);
+  await t.restore(saved);
+  t.start();
+  await untilStep(1);
+  await t.pause();
+  t.start();
+  await untilStep(2);
+  await t.pause();
+  expect(milestones).toEqual([0]);
+  expect(t.valHistory.map((v) => v.step)).toEqual([0]);
+});
+
+test('载入第 99 步的存档后继续：第 100 步照常做里程碑', async () => {
+  const milestones: number[] = [];
+  const t = make({ onMilestone: ({ step }) => { milestones.push(step); } });
+  for (let i = 0; i < 99; i++) await t.step();
+  t.valHistory.push({ step: 0, loss: 2.4 }, { step: 50, loss: 2.2 });
+  await t.restore(await t.snapshot());
+  t.start();
+  await untilStep(101);
+  await t.pause();
+  expect(milestones).toEqual([100]);
+  expect(t.valHistory.map((v) => v.step)).toEqual([0, 50, 100]);
+});
+
+test('里程碑进行中点暂停：状态和计时立刻停下，里程碑做完后不再训练下一步', async () => {
+  let finishMilestone!: () => void;
+  const gate = new Promise<void>((resolve) => { finishMilestone = resolve; });
+  const states: string[] = [];
+  const t = make({ onMilestone: () => gate, onState: (s) => states.push(s) });
+  t.start();
+  await vi.waitFor(() => expect(t.valHistory).toHaveLength(1)); // 第 0 步里程碑在等采样
+  const paused = t.pause();
+  expect(t.state).toBe('paused'); // 不等里程碑做完
+  expect(states).toEqual(['running', 'paused']);
+  const { elapsedMs } = t.stats();
+  await sleep(30);
+  expect(t.stats().elapsedMs).toBe(elapsedMs);
+  finishMilestone();
+  await paused;
+  expect(t.stats().step).toBe(0);
+  expect(states).toEqual(['running', 'paused']);
+});
+
+test('暂停还没生效（里程碑进行中）时再点继续：接着训练，状态回到 running', async () => {
+  let finishMilestone!: () => void;
+  const gate = new Promise<void>((resolve) => { finishMilestone = resolve; });
+  const states: string[] = [];
+  const t = make({ onMilestone: () => gate, onState: (s) => states.push(s) });
+  t.start();
+  await vi.waitFor(() => expect(t.valHistory).toHaveLength(1));
+  void t.pause();
+  t.start();
+  expect(t.state).toBe('running');
+  finishMilestone();
+  await untilStep(3);
+  await t.pause();
+  expect(states).toEqual(['running', 'paused', 'running', 'paused']);
+  const { step } = t.stats();
+  await sleep(50);
+  expect(t.stats().step).toBe(step); // 只有一个循环，暂停后不会再有别的循环偷跑
 });
 
 test('step() 记录 loss 并更新统计，loss 下降', async () => {

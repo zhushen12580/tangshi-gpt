@@ -15,9 +15,12 @@ test('生成记录从第 0 步开始', async ({ page }) => {
   await expect(page.getByTestId('samples-empty')).toHaveCount(0);
 
   await waitForStep(page, 100);
-  // 此刻通常正在做第 100 步的里程碑：暂停要等这首诗写完。软件 WebGL 下 24 次单样本前向约 10 秒
+  // 此刻通常正在做第 100 步的里程碑：暂停立刻生效，这首诗在后台写完。软件 WebGL 下 24 次单样本前向约 10 秒
   await btn.click();
-  await expect(btn).toHaveText('继续', { timeout: 60_000 });
+  await expect(btn).toHaveText('继续', { timeout: 2_000 });
+  await expect(items.filter({ has: page.locator('.sample-meta', { hasText: /^第 100 步 / }) })).toHaveCount(1, {
+    timeout: 60_000,
+  });
 
   const metas = await items.locator('.sample-meta').allTextContents();
   console.log(metas.join('\n'));

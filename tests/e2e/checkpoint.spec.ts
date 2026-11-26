@@ -10,8 +10,12 @@ test('保存、刷新、载入、继续', async ({ page }) => {
   await expect(save).toBeEnabled();
   await toggle.click();
   await waitForStep(page, 100);
+  // 此刻通常正在做第 100 步的里程碑（验证、写诗、热力图）；按钮和步数都要从点击起 2 秒内停下
+  const clickedAt = Date.now();
   await toggle.click();
-  await expect(toggle).toHaveText('继续', { timeout: 60_000 });
+  await expect(toggle).toHaveText('继续', { timeout: 2_000 });
+  expect(Date.now() - clickedAt).toBeLessThanOrEqual(2_000);
+  await page.waitForTimeout(Math.max(0, clickedAt + 2_000 - Date.now()));
   const step = await num(page, 'step');
   await page.waitForTimeout(2_000);
   await expect(page.getByTestId('step')).toHaveText(String(step));
@@ -49,6 +53,29 @@ test('保存、刷新、载入、继续', async ({ page }) => {
   await page.reload();
   await waitReady(page);
   await expect(status).toHaveText('');
+});
+
+test('训练前保存的存档：载入后继续会写出第 0 步的诗，且只写一次', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const status = page.getByTestId('save-status');
+  await page.getByTestId('save').click();
+  await expect(status).toHaveText('已保存：第 0 步', { timeout: 60_000 });
+  await page.reload();
+  await waitReady(page);
+  await page.getByTestId('load').click();
+  await expect(status).toHaveText('已载入：第 0 步', { timeout: 60_000 });
+  const toggle = page.getByTestId('start-toggle');
+  await expect(toggle).toHaveText('继续');
+  await toggle.click();
+  const zero = page.getByTestId('sample-item')
+    .filter({ has: page.locator('.sample-meta', { hasText: /^第 0 步 · 验证 loss \d+\.\d{3} · 自动/ }) });
+  await expect(zero).toHaveCount(1, { timeout: 60_000 });
+  await waitForStep(page, 1, 120_000);
+  await toggle.click();
+  await expect(toggle).toHaveText('继续', { timeout: 2_000 });
+  await expect(zero).toHaveCount(1);
+  await expect(page.getByTestId('loss-val')).toHaveText(/^\d+\.\d{3}$/);
 });
 
 test('IndexedDB 不可用时训练继续', async ({ page }) => {

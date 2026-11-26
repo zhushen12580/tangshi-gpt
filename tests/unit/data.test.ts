@@ -78,6 +78,21 @@ test('loadDataset 成功时返回 Dataset', async () => {
   expect(ds.poems).toHaveLength(file.count);
 });
 
+test('createDataset 拒绝不能用的数据：首数不够、不是五绝、缺预设诗的字', () => {
+  const poem = file.poems[1];
+  expect(() => createDataset({ ...file, poems: [] })).toThrow('至少');
+  expect(() => createDataset({ ...file, poems: [poem] })).toThrow('至少');
+  expect(() => createDataset({} as PoemsFile)).toThrow('至少');
+  expect(() => createDataset({ ...file, poems: [...file.poems, '床前明月光'] })).toThrow(`第 ${file.poems.length + 1} 首`);
+  expect(() => createDataset({ ...file, poems: [...file.poems, 42 as unknown as string] })).toThrow(`第 ${file.poems.length + 1} 首`);
+  expect(() => createDataset({ ...file, poems: [poem, poem] })).toThrow('字符不在字表中');
+});
+
+test('loadDataset 收到能解析但不能用的数据时 reject', async () => {
+  const fakeFetch = (async () => Response.json({ poems: [] })) as typeof fetch;
+  await expect(loadDataset('data/poems.json', fakeFetch)).rejects.toThrow('至少');
+});
+
 test('loadDataset 收到 404 时 reject，错误信息含 404', async () => {
   const fakeFetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
   await expect(loadDataset('data/poems.json', fakeFetch)).rejects.toThrow('404');

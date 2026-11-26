@@ -1,5 +1,8 @@
 // 数据：字表、编码、训练/验证切分、取 batch、加载 poems.json
 
+import presets from './presets.json';
+import { isWujue } from './sample';
+
 export const BOS = '<s>';
 
 export interface PoemsFile {
@@ -73,9 +76,18 @@ export function vocabHash(vocab: string[]): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * 不能用的数据（HTTP 200 但内容不对）在这里就抛错，页面才会显示「重试」，而不是建模型时才出错：
+ * 至少 2 首（训练集、验证集各至少一首），每首都是五绝，预设诗的字都在字表里
+ */
 export function createDataset(file: PoemsFile): Dataset {
+  const poems: unknown = file?.poems;
+  if (!Array.isArray(poems) || poems.length < 2) throw new Error('数据集至少要有 2 首诗');
+  const bad = poems.findIndex((p) => typeof p !== 'string' || !isWujue(p));
+  if (bad >= 0) throw new Error(`数据集第 ${bad + 1} 首不是五言绝句`);
   const vocab = buildVocab(file.poems);
   const stoi = new Map(vocab.map((c, i) => [c, i]));
+  for (const { poem } of presets) encode(poem, stoi); // 字表外的字会抛「字符不在字表中」
   const { train, val } = splitTrainVal(file.poems.map((p) => encode(p, stoi)));
   return { poems: file.poems, vocab, stoi, bosId: vocab.length - 1, train, val, hash: vocabHash(vocab) };
 }

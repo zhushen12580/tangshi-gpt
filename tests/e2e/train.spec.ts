@@ -54,15 +54,15 @@ test('训练 200 步 loss 下降', async ({ page }) => {
   const initial = await num(page, 'loss-initial');
   expect(Math.abs(initial - (await num(page, 'loss-baseline')))).toBeLessThanOrEqual(0.5);
 
-  // 第 200 步的里程碑（验证 + 写一首诗）可能还在进行，暂停要等它做完
+  // 第 200 步的里程碑（验证 + 写一首诗）可能还在进行：暂停立刻生效，里程碑在后台做完
   await btn.click();
-  await expect(btn).toHaveText('继续', { timeout: 60_000 });
+  await expect(btn).toHaveText('继续', { timeout: 2_000 });
   expect(await num(page, 'loss-current')).toBeLessThanOrEqual(initial * 0.85);
 
   await expect(empty).toBeHidden();
   expect(await pixels()).not.toBe(blank);
-  // 停在 ≥ 200 步时，第 200 步的验证 loss 已经算出
-  expect(await num(page, 'loss-val')).toBeLessThan(initial);
+  // 停在 ≥ 200 步时，第 200 步的验证 loss 已经算出或正在算
+  await expect.poll(() => num(page, 'loss-val'), { timeout: 60_000 }).toBeLessThan(initial);
 });
 
 // loss 区就是装着 loss 曲线的那个区块，生成记录区装着 samples

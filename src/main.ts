@@ -254,7 +254,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       }, (error) => `无法删除存档：${error instanceof Error ? error.message : String(error)}`);
     });
 
-    // 暂停要等当前这一步结束，按钮文字由 onState 在循环真正停下后更新
+    // 暂停立刻变成「继续」；正在做的这一步和它的里程碑（验证、写诗）会在后台做完
     startToggle.addEventListener('click', () => (trainer.state === 'running' ? trainer.pause() : trainer.start()));
     startToggle.textContent = TOGGLE_TEXT[trainer.state];
     startToggle.disabled = false;

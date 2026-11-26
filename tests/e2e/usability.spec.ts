@@ -26,10 +26,11 @@ test('真实流程', async ({ page }) => {
   await expect(btn).toHaveText('暂停');
   await waitForStep(page, 50);
   await page.keyboard.press('Enter');
-  await expect(btn).toHaveText('继续', { timeout: 60_000 });
+  await expect(btn).toHaveText('继续', { timeout: 2_000 });
 
+  // 停在第 50 步时，它的里程碑可能还在后台写诗
   const items = page.getByTestId('sample-item');
-  expect(await items.count()).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => items.count(), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   for (const item of await items.all()) {
     const lines = await item.locator('.poem-line').allTextContents();
     expect(lines).toHaveLength(4);

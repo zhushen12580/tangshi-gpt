@@ -136,19 +136,29 @@ export class Trainer {
     return result;
   }
 
-  /** 开始或继续训练；已经在跑时什么都不做，保证同一时刻只有一个循环 */
+  /**
+   * 开始或继续训练；已经在跑时什么都不做，保证同一时刻只有一个循环。
+   * 暂停请求还没生效（循环还在做这一步的里程碑）时，撤销请求，接着用原来的循环
+   */
   start(): void {
-    if (this.loop) return;
+    if (this.loop && !this.stopRequested) return;
     this.stopRequested = false;
     this.runStartedAt = performance.now();
     this.stepTimes = [this.runStartedAt]; // 暂停的时间不算进步/秒
     this.setState('running');
-    this.loop = this.run();
+    this.loop ??= this.run();
   }
 
-  /** 请求暂停，等当前这一步结束、循环退出后才返回 */
+  /**
+   * 请求暂停：状态和计时立刻停下（里程碑在软件 WebGL 下要做十几秒，按钮不能等它），
+   * 返回的 Promise 等当前这一步（含里程碑）结束、循环退出后才完成
+   */
   async pause(): Promise<void> {
-    this.stopRequested = true;
+    if (this.loop && !this.stopRequested) {
+      this.stopRequested = true;
+      this.stopClock();
+      this.setState('paused');
+    }
     await this.loop;
   }
 
@@ -207,7 +217,8 @@ export class Trainer {
       this.ema = this.lossHistory.reduce<number | null>(
         (ema, loss) => ema === null ? loss : EMA_BETA * ema + (1 - EMA_BETA) * loss, null,
       );
-      this.lastMilestoneStep = s.step;
+      // 最后一个验证点就是做过的最后一个里程碑；训练前保存的存档没有验证点，继续时要补做第 0 步
+      this.lastMilestoneStep = s.valHistory.at(-1)?.step ?? null;
       this.setState('paused');
     });
   }
@@ -248,11 +259,17 @@ export class Trainer {
         await new Promise((r) => setTimeout(r, 0)); // 让出主线程，界面才能刷新、响应点击
       }
     } finally {
-      this.elapsedBefore += performance.now() - this.runStartedAt!;
-      this.runStartedAt = null;
+      this.stopClock();
       this.loop = null;
       this.setState(nan ? 'nan' : 'paused');
     }
+  }
+
+  /** 把这一段训练的时长记进累计，停止计时 */
+  private stopClock(): void {
+    if (this.runStartedAt === null) return;
+    this.elapsedBefore += performance.now() - this.runStartedAt;
+    this.runStartedAt = null;
   }
 
   /** 步数是 50 的倍数且这一步还没做过里程碑时：算验证 loss，记下来，再等回调（采样等）做完 */
@@ -266,6 +283,7 @@ export class Trainer {
   }
 
   private setState(s: TrainState): void {
+    if (this.state === s) return; // 请求暂停和循环退出都会设 paused，只通知一次
     this.state = s;
     this.o.onState?.(s);
   }
