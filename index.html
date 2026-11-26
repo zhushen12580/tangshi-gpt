@@ -24,6 +24,7 @@
     <main>
       <section class="controls">
         <button type="button" data-testid="start-toggle" disabled>正在准备…</button>
+        <button type="button" data-testid="reset" disabled>重置</button>
         <label>
           温度
           <input type="range" data-testid="temperature" min="0.1" max="1.5" step="0.1" value="0.8" aria-label="温度" />
@@ -37,25 +38,29 @@
         <button type="button" data-testid="delete-save" disabled>删除存档</button>
       </section>
       <p class="save-status" data-testid="save-status" role="status"></p>
-      <section>
-        <dl class="meta">
-          <div><dt>步数</dt><dd data-testid="step">0</dd></div>
-          <div><dt>初始 loss</dt><dd data-testid="loss-initial">—</dd></div>
-          <div><dt>当前 loss</dt><dd data-testid="loss-current">—</dd></div>
-          <div><dt>验证 loss</dt><dd data-testid="loss-val">—</dd></div>
-          <div><dt>步/秒</dt><dd data-testid="speed">0.0</dd></div>
-          <div><dt>已训练</dt><dd data-testid="elapsed">00:00</dd></div>
-        </dl>
-        <div class="chart">
-          <canvas data-testid="loss-chart" role="img" aria-label="训练 loss 曲线"></canvas>
-          <p class="empty" data-testid="loss-empty">点击「开始训练」后这里会画出 loss 曲线</p>
-        </div>
-        <p class="legend">细线：每步训练 loss · 粗线：平滑后（EMA）· 朱砂圆点：验证 loss</p>
-      </section>
-      <section>
-        <h2>生成记录</h2>
-        <div data-testid="samples"></div>
-      </section>
+      <p class="notice" data-testid="train-error" role="alert"></p>
+      <div class="split">
+        <section>
+          <h2>训练</h2>
+          <dl class="meta">
+            <div><dt>步数</dt><dd data-testid="step">0</dd></div>
+            <div><dt>初始 loss</dt><dd data-testid="loss-initial">—</dd></div>
+            <div><dt>当前 loss</dt><dd data-testid="loss-current">—</dd></div>
+            <div><dt>验证 loss</dt><dd data-testid="loss-val">—</dd></div>
+            <div><dt>步/秒</dt><dd data-testid="speed">0.0</dd></div>
+            <div><dt>已训练</dt><dd data-testid="elapsed">00:00</dd></div>
+          </dl>
+          <div class="chart">
+            <canvas data-testid="loss-chart" role="img" aria-label="训练 loss 曲线"></canvas>
+            <p class="empty" data-testid="loss-empty">点击「开始训练」后这里会画出 loss 曲线</p>
+          </div>
+          <p class="legend">细线：每步训练 loss · 粗线：平滑后（EMA）· 朱砂圆点：验证 loss</p>
+        </section>
+        <section>
+          <h2>生成记录</h2>
+          <div data-testid="samples"></div>
+        </section>
+      </div>
       <section>
         <h2>注意力</h2>
         <form class="controls">
@@ -64,9 +69,14 @@
           <button type="submit" data-testid="heatmap-view" disabled>查看</button>
         </form>
         <p class="notice" data-testid="heatmap-error" role="alert"></p>
-        <div data-testid="heatmap"></div>
+        <div data-testid="heatmap"><p class="empty">数据加载后显示注意力热力图</p></div>
       </section>
     </main>
+    <footer>
+      <a href="https://github.com/chinese-poetry/chinese-poetry">数据来源：chinese-poetry（MIT）</a> ·
+      <a href="data/NOTICE.txt">许可说明</a> ·
+      <a href="https://github.com/zhushen12580/tangshi-gpt">GitHub</a>
+    </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

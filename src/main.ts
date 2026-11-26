@@ -15,6 +15,7 @@ import { renderSamples } from './ui/samples';
 
 const $ = (testId: string) => document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!;
 const startToggle = $('start-toggle') as HTMLButtonElement;
+const resetBtn = $('reset') as HTMLButtonElement;
 const lossChart = $('loss-chart') as HTMLCanvasElement;
 const temperatureInput = $('temperature') as HTMLInputElement;
 const constrainBox = $('constrain') as HTMLInputElement;
@@ -38,6 +39,7 @@ function renderStats(s: TrainStats): void {
 }
 
 const TOGGLE_TEXT: Record<TrainState, string> = { idle: '开始训练', running: '暂停', paused: '继续', nan: '继续' };
+const NAN_MESSAGE = '训练出现数值异常（NaN），已暂停。可点「重置」或换用 ?backend=webgl';
 
 let samples: SampleRecord[] = [];
 renderSamples($('samples'), samples);
@@ -136,7 +138,14 @@ Promise.all([backendReady, loadDatasetWithRetry()])
         await generate(m.step, m.valLoss, false);
         await refreshHeatmap();
       },
-      onState: (s) => (startToggle.textContent = TOGGLE_TEXT[s]),
+      onState: (s) => {
+        startToggle.textContent = TOGGLE_TEXT[s];
+        // NaN 后权重已经坏了，接着训练没有意义：禁用到重置（或载入存档）为止
+        if (s === 'nan') {
+          startToggle.disabled = true;
+          $('train-error').textContent = NAN_MESSAGE;
+        }
+      },
     });
     queueDraw(); // 先按实际尺寸画一次空画布
     addEventListener('resize', queueDraw);
@@ -218,9 +227,10 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       const saved = checkpoint;
       if (!saved || !compatible) return;
       return runSaveAction(async () => {
-        startToggle.disabled = generateBtn.disabled = true;
+        startToggle.disabled = generateBtn.disabled = resetBtn.disabled = true;
         try {
           await trainer.restore(saved);
+          $('train-error').textContent = '';
           samples = [...saved.samples];
           renderSamples($('samples'), samples);
           syncLatestPoem();
@@ -230,7 +240,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
           queueDraw();
           saveStatus.textContent = `已载入：第 ${saved.step} 步`;
         } finally {
-          startToggle.disabled = generateBtn.disabled = false;
+          startToggle.disabled = generateBtn.disabled = resetBtn.disabled = false;
         }
       }, (error) => `无法载入存档：${error instanceof Error ? error.message : String(error)}`);
     });
@@ -248,6 +258,26 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     startToggle.addEventListener('click', () => (trainer.state === 'running' ? trainer.pause() : trainer.start()));
     startToggle.textContent = TOGGLE_TEXT[trainer.state];
     startToggle.disabled = false;
+
+    // 重置期间禁用开始：否则 pause 之后、重新初始化之前可能又起一个循环
+    resetBtn.addEventListener('click', async () => {
+      if (trainer.lossHistory.length > 0 && !confirm('确定重置？当前训练进度会清空，存档不受影响。')) return;
+      startToggle.disabled = generateBtn.disabled = resetBtn.disabled = true;
+      try {
+        await trainer.reset();
+        samples = [];
+        renderSamples($('samples'), samples);
+        syncLatestPoem();
+        $('train-error').textContent = '';
+        $('loss-val').textContent = fmtLoss(null);
+        renderStats(trainer.stats());
+        queueDraw();
+        await trainer.runBetweenSteps(refreshHeatmap);
+      } finally {
+        startToggle.disabled = generateBtn.disabled = resetBtn.disabled = false;
+      }
+    });
+    resetBtn.disabled = false;
 
     // 训练中排到当前这一步之后执行，训练不中断；步数和验证 loss 也在那时才读
     generateBtn.addEventListener('click', () =>

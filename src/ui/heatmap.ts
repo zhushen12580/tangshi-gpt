@@ -59,7 +59,7 @@ export function createHeatmap(root: HTMLElement): Heatmap {
   const readout = document.createElement('p');
   readout.dataset.testid = 'heatmap-readout';
   layout.append(axisX, axisY, main);
-  root.append(stepLabel, thumbs, layout, readout);
+  root.replaceChildren(stepLabel, thumbs, layout, readout); // 换掉 HTML 里「数据加载后显示」的空状态
 
   let layer = 0;
   let head = 0;

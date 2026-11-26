@@ -50,7 +50,7 @@ test('采样控件与键盘', async ({ page }) => {
     tabbed.push(f.id);
     expect(f.outline, f.id).not.toBe('none');
   }
-  const order = ['start-toggle', 'temperature', 'constrain', 'generate'].map((id) => tabbed.indexOf(id));
+  const order = ['start-toggle', 'reset', 'temperature', 'constrain', 'generate', 'save'].map((id) => tabbed.indexOf(id));
   expect(order.every((i) => i >= 0), tabbed.join(',')).toBe(true);
   expect(order).toEqual([...order].sort((a, b) => a - b));
 

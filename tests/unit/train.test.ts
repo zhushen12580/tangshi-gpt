@@ -224,3 +224,43 @@ test('暂停时跳过排在采样之后、尚未开始的训练步', async () =>
   await paused;
   expect(t.stats().step).toBe(0);
 });
+
+test('reset() 先暂停，重新初始化权重和 Adam，清空历史；下一次 start 重新做第 0 步里程碑', async () => {
+  const milestones: number[] = [];
+  const states: string[] = [];
+  const t = make({ onMilestone: ({ step }) => { milestones.push(step); }, onState: (s) => states.push(s) });
+  const fresh = tf.memory().numTensors;
+  t.start();
+  await untilStep(3);
+  const trained = Array.from(await t.params.wte.data());
+  await t.reset();
+  expect(t.state).toBe('idle');
+  expect(states.at(-1)).toBe('idle');
+  expect(t.stats()).toMatchObject({ step: 0, initialLoss: null, currentLoss: null, ema: null, elapsedMs: 0 });
+  expect(t.lossHistory).toEqual([]);
+  expect(t.valHistory).toEqual([]);
+  expect(tf.memory().numTensors).toBe(fresh);
+  expect(Array.from(await t.params.wte.data())).not.toEqual(trained);
+
+  t.start();
+  await untilStep(1);
+  await t.pause();
+  expect(milestones).toEqual([0, 0]);
+});
+
+test('loss 出现 NaN 时自动停下，状态为 nan，不记进历史', async () => {
+  const states: string[] = [];
+  const t = make({ onState: (s) => states.push(s) });
+  await t.step();
+  await t.step();
+  t.params.wte.assign(tf.fill(t.params.wte.shape, NaN));
+  const spy = vi.spyOn(t, 'step');
+  t.start();
+  await vi.waitFor(() => expect(t.state).toBe('nan'));
+  const calls = spy.mock.calls.length;
+  await sleep(50);
+  expect(spy.mock.calls.length).toBe(calls);
+  expect(calls).toBe(1);
+  expect(t.stats().step).toBe(2);
+  expect(states).toEqual(['running', 'nan']);
+});

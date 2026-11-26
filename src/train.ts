@@ -100,6 +100,7 @@ export class Trainer {
     });
     const value = (await loss.data())[0];
     loss.dispose();
+    if (!Number.isFinite(value)) return value; // 数值异常：不记进历史，由 run() 停下循环
 
     this.lossHistory.push(value);
     this.ema = this.ema === null ? value : EMA_BETA * this.ema + (1 - EMA_BETA) * value;
@@ -211,20 +212,38 @@ export class Trainer {
     });
   }
 
+  /** 回到第 0 步：先暂停，再重新初始化权重和 Adam、清空历史；不碰存档 */
+  async reset(): Promise<void> {
+    await this.pause();
+    await this.runBetweenSteps(async () => {
+      this.dispose();
+      this.params = initParams(this.cfg, this.o.seed);
+      this.optimizer = tf.train.adam(this.o.lr ?? LEARNING_RATE);
+      this.lossHistory = [];
+      this.valHistory = [];
+      this.ema = null;
+      this.lastMilestoneStep = null;
+      this.stepTimes = [];
+      this.elapsedBefore = 0;
+      this.setState('idle');
+    });
+  }
+
   dispose(): void {
     Object.values(this.params).forEach((v) => v.dispose());
     this.optimizer.dispose();
   }
 
   private async run(): Promise<void> {
+    let nan = false;
     try {
       // 每一步也排在 runBetweenSteps 的链上，插队的任务就只会落在两步之间
       await this.runBetweenSteps(() => this.milestoneIfDue()); // 第 0 步的里程碑在第一步训练之前
-      while (!this.stopRequested) {
+      while (!this.stopRequested && !nan) {
         await this.runBetweenSteps(async () => {
           if (this.stopRequested) return; // 等待采样时也可能收到暂停请求
-          await this.step(); // 通过 this.step 调用，单测会 spy 它
-          await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
+          nan = !Number.isFinite(await this.step()); // 通过 this.step 调用，单测会 spy 它
+          if (!nan) await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
         });
         await new Promise((r) => setTimeout(r, 0)); // 让出主线程，界面才能刷新、响应点击
       }
@@ -232,7 +251,7 @@ export class Trainer {
       this.elapsedBefore += performance.now() - this.runStartedAt!;
       this.runStartedAt = null;
       this.loop = null;
-      this.setState('paused');
+      this.setState(nan ? 'nan' : 'paused');
     }
   }
 

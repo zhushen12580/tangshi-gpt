@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { num, openApp, waitForStep, waitReady } from './helpers';
 
 test('加载状态与页头', async ({ page }) => {
@@ -63,4 +63,55 @@ test('训练 200 步 loss 下降', async ({ page }) => {
   expect(await pixels()).not.toBe(blank);
   // 停在 ≥ 200 步时，第 200 步的验证 loss 已经算出
   expect(await num(page, 'loss-val')).toBeLessThan(initial);
+});
+
+// loss 区就是装着 loss 曲线的那个区块，生成记录区装着 samples
+const lossPanel = (page: Page) => page.locator('section', { has: page.getByTestId('loss-chart') });
+const samplesPanel = (page: Page) => page.locator('section', { has: page.getByTestId('samples') });
+
+test('窄屏单列', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+  const loss = (await lossPanel(page).boundingBox())!;
+  const samples = (await samplesPanel(page).boundingBox())!;
+  expect(samples.y).toBeGreaterThan(loss.y + loss.height);
+});
+
+test('宽屏并排', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const loss = (await lossPanel(page).boundingBox())!;
+  const samples = (await samplesPanel(page).boundingBox())!;
+  expect(samples.x).toBeGreaterThan(loss.x);
+  expect(Math.abs(samples.y - loss.y)).toBeLessThan(40);
+});
+
+test('重置', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const btn = page.getByTestId('start-toggle');
+  await btn.click();
+  await waitForStep(page, 3, 120_000);
+  await btn.click();
+  await expect(btn).toHaveText('继续', { timeout: 60_000 });
+  await expect(page.getByTestId('loss-empty')).toBeHidden();
+  await expect(page.getByTestId('sample-item')).toHaveCount(1);
+
+  let message = '';
+  page.once('dialog', (dialog) => {
+    message = dialog.message();
+    return dialog.accept();
+  });
+  await page.getByTestId('reset').click();
+  await expect(btn).toHaveText('开始训练');
+  expect(message).toBe('确定重置？当前训练进度会清空，存档不受影响。');
+  await expect(page.getByTestId('step')).toHaveText('0');
+  await expect(page.getByTestId('loss-initial')).toHaveText('—');
+  await expect(page.getByTestId('samples-empty')).toBeVisible();
+  await expect(page.getByTestId('loss-empty')).toBeVisible();
+  await expect(page.getByTestId('heatmap-step')).toHaveText('来自第 0 步的模型', { timeout: 30_000 });
+  await expect(btn).toBeEnabled();
 });

@@ -6,11 +6,53 @@
 }
 
 body {
-  margin: 0;
+  max-width: 72rem;
+  margin: 0 auto;
   padding: 1rem;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-serif);
+  accent-color: var(--cinnabar); /* 滑块和复选框 */
+}
+
+canvas {
+  max-width: 100%;
+}
+
+button {
+  padding: 0.25em 0.75em;
+  border: 1px solid var(--ink);
+  border-radius: 0.25em;
+  background: #fffaf0;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+a {
+  color: var(--cinnabar);
+}
+
+/* 宽屏时 loss 区和生成记录左右并排，窄屏单列 */
+@media (min-width: 900px) {
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+  }
+}
+
+footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(31 26 23 / 0.2);
+  font-size: 0.85em;
 }
 
 h1 {
@@ -109,6 +151,8 @@ h1 {
   list-style: none;
   padding: 0;
   margin: 0;
+  max-height: 32rem; /* 最多 200 首，限高滚动，不把注意力区挤到很远 */
+  overflow-y: auto;
 }
 
 .sample {
