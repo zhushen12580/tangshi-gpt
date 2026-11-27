@@ -6,6 +6,8 @@
 
 **在线体验：<https://zhushen12580.github.io/tangshi-gpt/>**（推荐 Chrome 或 Edge 113+，可以用上 WebGPU）
 
+**[1 分钟看懂原理](https://zhushen12580.github.io/tangshi-gpt/explainer.mp4)**（约 1 分半的动画，无配音，中文字幕；[文字版](public/explainer.txt)）
+
 ![唐诗 GPT 用 WebGPU 训练到第 580 步：loss 曲线、验证 loss 圆点，以及每 50 步生成的诗](docs/images/demo.png)
 
 <sub>Intel Arc 130T 核显，WebGPU 后端，580 步用时 1 分 10 秒。</sub>
@@ -123,7 +125,7 @@ npm run test:e2e
 - `npm test`：在 Node 里跑 Vitest 单元测试，包括数据集校验。
 - `npm run test:coverage`：检查核心模块的行覆盖率 ≥ 80%。
 - `npx playwright install chromium`：只需执行一次。
-- `npm run test:e2e`：先构建，再在 http://localhost:4173/tangshi-gpt/ 上用 Chromium 跑 Playwright 测试，需要 4173 端口空闲。训练走的是软件 WebGL，整轮比较慢：开发机上 28 个用例约 22 分钟。
+- `npm run test:e2e`：先构建，再在 http://localhost:4173/tangshi-gpt/ 上用 Chromium 跑 Playwright 测试，需要 4173 端口空闲。训练走的是软件 WebGL，开发机上跑完 42 个用例约需 24 分钟。
 
 ## 构建与部署
 
@@ -160,6 +162,17 @@ CHINESE_POETRY_BASE='https://cdn.jsdelivr.net/gh/chinese-poetry/chinese-poetry@b
 ```
 
 完成后 `git status --porcelain public/data` 应该没有任何输出。来源和许可的详细信息见 [`public/data/NOTICE.txt`](public/data/NOTICE.txt)。
+
+## 重新生成原理视频
+
+需要一台支持 WebGPU 或 WebGL 硬件加速的机器。如果尚未安装 Chromium，先运行 `npx playwright install chromium`。按顺序执行以下两条命令。
+
+```sh
+npm run build:explainer-trace
+npm run build:explainer-video
+```
+
+第一条命令录制一次 1500 步的真实训练，写入 `explainer/trace.json`。第二条命令生成 `public/explainer.mp4` 和 `public/explainer.txt`。视频里的数字全部来自训练记录和代码。两条命令都在本地运行，CI 不执行。
 
 ## 许可证
 

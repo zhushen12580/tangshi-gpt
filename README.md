@@ -6,6 +6,8 @@ English | [简体中文](README.zh-CN.md)
 
 **Live demo: https://zhushen12580.github.io/tangshi-gpt/** (Chrome or Edge 113+ recommended for WebGPU)
 
+**[How it works in 1 minute](https://zhushen12580.github.io/tangshi-gpt/explainer.mp4)** (a short animation with Chinese captions, no voice-over; [transcript](public/explainer.txt))
+
 ![Tangshi GPT after 580 training steps on WebGPU: the loss curve with validation-loss dots, and the poems sampled every 50 steps](docs/images/demo.png)
 
 <sub>580 steps in 1 min 10 s with WebGPU on an Intel Arc 130T integrated GPU. The UI is in Chinese.</sub>
@@ -123,7 +125,7 @@ npm run test:e2e
 - `npm test` runs the Vitest unit tests in Node, including the dataset checks.
 - `npm run test:coverage` checks ≥ 80% line coverage of the core modules.
 - `npx playwright install chromium` is only needed once.
-- `npm run test:e2e` builds the app, serves it at http://localhost:4173/tangshi-gpt/ and runs the Playwright tests in Chromium. Port 4173 must be free. Training runs on software WebGL, so the whole run takes a while: 28 tests took about 22 minutes on the development machine.
+- `npm run test:e2e` builds the app, serves it at http://localhost:4173/tangshi-gpt/ and runs the Playwright tests in Chromium. Port 4173 must be free. Training runs on software WebGL. The full run of 42 tests took about 24 minutes on the development machine.
 
 ## Build and deploy
 
@@ -160,6 +162,17 @@ CHINESE_POETRY_BASE='https://cdn.jsdelivr.net/gh/chinese-poetry/chinese-poetry@b
 ```
 
 Afterwards `git status --porcelain public/data` should print nothing. Source and license details are in [`public/data/NOTICE.txt`](public/data/NOTICE.txt).
+
+## Regenerating the explainer video
+
+Use a machine with WebGPU or WebGL hardware acceleration and install Chromium with `npx playwright install chromium` if needed. Run these commands in order:
+
+```sh
+npm run build:explainer-trace
+npm run build:explainer-video
+```
+
+The first command records a real 1500-step training run to `explainer/trace.json`. The second generates `public/explainer.mp4` and `public/explainer.txt`. All figures in the video come from the trace and the code. Both commands run locally, outside CI.
 
 ## License
 
