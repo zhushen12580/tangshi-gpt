@@ -14,12 +14,14 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "build:data": "node scripts/build-dataset.mjs",
-    "build:explainer-trace": "node scripts/build-explainer.mjs trace"
+    "build:explainer-trace": "node scripts/build-explainer.mjs trace",
+    "build:explainer-video": "node scripts/build-explainer.mjs video"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.9",
     "@vitest/coverage-v8": "^5.1.1",
+    "mediabunny": "^1.66.5",
     "opencc-js": "^1.4.2",
     "typescript": "~5.9.3",
     "vite": "^8.3.8",

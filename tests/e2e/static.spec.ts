@@ -3,7 +3,7 @@ import { extname } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { openApp, waitForStep, waitReady } from './helpers';
 
-const STATIC_EXTS = ['.html', '.js', '.css', '.json', '.txt'];
+const STATIC_EXTS = ['.html', '.js', '.css', '.json', '.txt', '.mp4'];
 
 test('dist 只有静态文件', () => {
   // webServer 启动前已经执行过 npm run build

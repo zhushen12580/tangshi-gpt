@@ -1,8 +1,9 @@
 // 原理视频的数据：一次真实训练的录制结果（explainer/trace.json）的类型和检查。录制页和单测共用
 
-import { overfitStatus } from '../src/explain';
+import { guessCount, overfitStatus } from '../src/explain';
 import { MODEL_DEFAULTS } from '../src/model';
 import { isWujue } from '../src/sample';
+import presets from '../src/presets.json';
 import { MILESTONE_EVERY } from '../src/train';
 
 export interface Point { step: number; loss: number }
@@ -73,3 +74,91 @@ export function traceErrors(t: Trace): string[] {
   if (Array.isArray(val) && val.every(isPoint) && overfitStatus(val) === null) errors.push('验证 loss 没有回升');
   return errors;
 }
+
+// ---- 分镜和字幕：规格「原理视频 · 分镜与字幕」，{} 里的数一律从 trace 或代码取 ----
+
+export const TITLE = '唐诗 GPT：1 分钟看懂它怎么学会写诗';
+export const SITE = 'zhushen12580.github.io/tangshi-gpt';
+export const BACKEND_LABEL = { webgpu: 'WebGPU', webgl: 'WebGL' } as const;
+const MOTIFS = ['月', '秋风', '江', '花', '酒'];
+const CAPTION_MIN = 2; // 每条字幕至少显示的秒数
+const CHARS_PER_SECOND = 7.5; // 每条显示 max(CAPTION_MIN, 字数 / CHARS_PER_SECOND) 秒；规格下限是 8，用计划的 7 总长 91.7 秒超了 90
+export const TRANSITION = 0.5; // 分镜之间的过渡秒数
+export const PEAK_ROW = 10; // 注意力分镜看第 10 位「海」那一行
+
+export interface Caption { text: string; start: number; end: number }
+export interface Scene { id: number; name: string; start: number; end: number; captions: Caption[] }
+export interface Timeline { scenes: Scene[]; duration: number }
+
+/** 概率 ≥ 10% 写整数百分数，否则两位有效数字 */
+export const formatPercent = (p: number): string => (p >= 0.1 ? `${Math.round(p * 100)}%` : `${(p * 100).toPrecision(2)}%`);
+const f2 = (x: number) => x.toFixed(2);
+const nll = (p: number) => f2(-Math.log(p));
+
+/** 《登鹳雀楼》的注意力输入：<s> 加上诗的前 ctx − 1 个字 */
+export const attentionTokens = (): string[] =>
+  ['<s>', ...presets.find((p) => p.title === '登鹳雀楼')!.poem].slice(0, MODEL_DEFAULTS.ctx);
+
+/** 「海」那一行在全部层、头和第 1–9 列（不含 <s> 和「海」自己）里最大的权重；layer、head 从 0 数 */
+export function attentionPeak(t: Trace): { layer: number; head: number; col: number; w: number } {
+  let peak = { layer: 0, head: 0, col: 1, w: -1 };
+  t.attention.forEach((layer, l) => layer.forEach((head, h) => {
+    for (let col = 1; col < PEAK_ROW; col++) if (head[PEAK_ROW][col] > peak.w) peak = { layer: l, head: h, col, w: head[PEAK_ROW][col] };
+  }));
+  return peak;
+}
+
+/** 每个分镜的字幕文字，按规格的分镜表填数 */
+function sceneTexts(t: Trace): [string, string[]][] {
+  const { meta, best, guess } = t;
+  const motifs = MOTIFS.filter((m) => t.samples.some((s) => s.step <= best.step && s.text.includes(m)));
+  const copy = t.samples.find((s) => s.step > best.step && s.inTrain);
+  const peak = attentionPeak(t);
+  const [low, high] = t.temperature;
+  return [
+    ['片头', [TITLE, `下面的数字都来自一次真实训练（${BACKEND_LABEL[meta.backend]}，${meta.steps} 步）`]],
+    ['猜下一个字', ['它只做一件事：根据前面的字，猜下一个字。', '从 <s>（开头记号）开始，一个字一个字猜满 24 个，就是一首五绝。']],
+    ['对答案、扣分', [
+      `训练时拿真唐诗对答案：这里正确的字是「${guess.answer}」。`,
+      `刚开始，它给「${guess.answer}」的概率只有 ${formatPercent(guess.step0.p)}，扣分 loss = −ln(概率) ≈ ${nll(guess.step0.p)}。`,
+      `练到第 ${best.step} 步，概率升到 ${formatPercent(guess.best.p)}，只扣 ${nll(guess.best.p)}。`,
+    ]],
+    ['微调参数', [
+      `每一步，把全部约 ${Math.round(meta.params / 1e4)} 万个参数（${meta.params}）都往“猜对”的方向挪一点。`,
+      `每步一起猜 ${meta.batch} 首诗，这次一共重复了 ${meta.steps} 步。`,
+    ]],
+    ['loss 下降', [
+      `一开始 loss ≈ ln ${meta.vocab} ≈ ${f2(meta.lnVocab)}：相当于在 ${meta.vocab} 个字里瞎蒙。`,
+      `到第 ${best.step} 步，验证 loss 降到 ${f2(best.loss)}，≈ 在 ${guessCount(best.loss)} 个字里蒙；${motifs.length ? motifs.join('、') : '常用字'}开始出现。`,
+    ]],
+    ['训练 loss 与验证 loss', [
+      `验证 loss 是模拟考：${meta.valCount} 首诗藏起来，从不给它学。`,
+      `训练 loss 一直降，最后是 ${f2(t.loss.at(-1)!)}；验证 loss 在第 ${best.step} 步最低（${f2(best.loss)}），之后回升到 ${f2(t.val.at(-1)!.loss)}。`,
+      `它开始背诗了（过拟合）。${copy ? `第 ${copy.step} 步写出的那首，就是训练集里的原文。` : ''}`,
+    ]],
+    ['温度', [
+      '同一个概率分布，温度决定它敢不敢挑冷门字。',
+      `温度 ${low.temperature}：几乎只挑最稳的几个字；温度 ${high.temperature}：冷门字也常被挑中。`,
+    ]],
+    ['注意力', [
+      '猜下一个字时，它会回头看前面的字。',
+      `《登鹳雀楼》里，第 ${peak.layer + 1} 层第 ${peak.head + 1} 个头在「${attentionTokens()[PEAK_ROW]}」这个位置最看重「${attentionTokens()[peak.col]}」（${f2(peak.w)}）。`,
+    ]],
+    ['片尾', [`打开页面，亲手训练一次：${SITE}`]],
+  ];
+}
+
+/** 字幕依次出现，每条 max(CAPTION_MIN, 字数 / CHARS_PER_SECOND) 秒；分镜之间过渡 TRANSITION 秒 */
+export function buildTimeline(t: Trace): Timeline {
+  let at = -TRANSITION;
+  const scenes = sceneTexts(t).map(([name, texts], id) => {
+    const start = (at += TRANSITION);
+    const captions = texts.map((text) => ({ text, start: at, end: (at += Math.max(CAPTION_MIN, [...text].length / CHARS_PER_SECOND)) }));
+    return { id, name, start, end: at, captions };
+  });
+  return { scenes, duration: at };
+}
+
+/** 文字版：片名，再按分镜写名称和字幕（不含 BOM，写文件时再加） */
+export const transcript = (t: Trace): string =>
+  [TITLE, ...buildTimeline(t).scenes.map((s) => `【${s.name}】\n${s.captions.map((c) => c.text).join('\n')}`)].join('\n\n') + '\n';
