@@ -11,6 +11,7 @@
       <h1>唐诗 GPT</h1>
       <p>不装 Python、不要显卡驱动、不要 API key，打开网页，看一个 GPT 在你的浏览器里从零学会写五言绝句。</p>
       <p data-testid="explain-intro">它只做一件事：根据前面的字，猜下一个字。一个字一个字猜满 24 个（20 个字加 4 个标点），就是一首五言绝句。训练就是让它反复去猜真唐诗、对答案，再把参数往猜对的方向挪一点。</p>
+      <button type="button" data-testid="explainer-open" aria-haspopup="dialog">1 分钟看懂原理</button>
       <dl class="meta">
         <div><dt>后端 <button type="button" class="help" popovertarget="help-backend-text" data-testid="help-backend" aria-label="说明：后端">?</button></dt><dd class="badge" data-testid="backend">—</dd></div>
         <div><dt>参数量</dt><dd data-testid="params">—</dd></div>
@@ -91,6 +92,15 @@
       <div popover id="help-constrain-text" data-testid="help-constrain-text">这是硬规则，不是模型学会的：第 6、12、18、24 个位置强制放「，。，。」，别的位置不许放这两个标点。关掉它，才能看出模型自己有没有学会格式。</div>
       <div popover id="help-generate-text" data-testid="help-generate-text">用现在的模型、按当前的温度和格式设置马上写一首。训练中点它，会等这一步算完再写，不打断训练。</div>
       <div popover id="help-heatmap-text" data-testid="help-heatmap-text">模型猜下一个字时，会回头看前面的字。每一行是一个字，颜色越深，表示它猜下一个字时越看重那一列的字；12 张小图是 3 层 × 4 个头，各看各的。</div>
+      <dialog class="explainer" data-testid="explainer-dialog" aria-labelledby="explainer-title">
+        <h2 id="explainer-title">1 分钟看懂原理</h2>
+        <video data-testid="explainer-video" controls preload="metadata" playsinline></video>
+        <p class="notice" data-testid="explainer-error" role="alert" hidden>视频加载失败，可以先看文字版。</p>
+        <div class="controls">
+          <a href="explainer.txt" data-testid="explainer-transcript">文字版</a>
+          <button type="button" data-testid="explainer-close" autofocus>关闭</button>
+        </div>
+      </dialog>
     </main>
     <footer>
       <a href="https://github.com/chinese-poetry/chinese-poetry">数据来源：chinese-poetry（MIT）</a> ·

@@ -10,6 +10,7 @@ import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './m
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
 import { BATCH_SIZE, CPU_BATCH_SIZE, CPU_MICRO_BATCH, Trainer, type TrainState, type TrainStats } from './train';
+import { setupExplainer } from './ui/explainer';
 import { createHeatmap } from './ui/heatmap';
 import { drawLossChart } from './ui/lossChart';
 import { renderSamples } from './ui/samples';
@@ -21,6 +22,7 @@ const lossChart = $('loss-chart') as HTMLCanvasElement;
 const temperatureInput = $('temperature') as HTMLInputElement;
 const constrainBox = $('constrain') as HTMLInputElement;
 const generateBtn = $('generate') as HTMLButtonElement;
+setupExplainer($('explainer-open') as HTMLButtonElement, $('explainer-dialog') as HTMLDialogElement);
 
 // 浏览器刷新时可能恢复滑块位置，所以一开始就按滑块的实际值显示一次
 const showTemperature = () => ($('temperature-value').textContent = Number(temperatureInput.value).toFixed(1));

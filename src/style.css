@@ -19,6 +19,32 @@ canvas {
   max-width: 100%;
 }
 
+.explainer {
+  box-sizing: border-box;
+  width: min(960px, calc(100vw - 2rem));
+  border: 1px solid var(--ink);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.explainer::backdrop {
+  background: rgb(31 26 23 / 0.65);
+}
+
+.explainer h2 {
+  margin: 0 0 0.75rem;
+}
+
+.explainer video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: var(--ink);
+  margin-bottom: 0.75rem;
+}
+
 button {
   padding: 0.25em 0.75em;
   border: 1px solid var(--ink);
