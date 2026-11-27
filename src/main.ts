@@ -153,7 +153,6 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     // 里程碑（验证、采样）期间没有 onStep，「已训练」也要继续走字
     setInterval(() => trainer.state === 'running' && renderStats(trainer.stats()), 500);
     $('params').textContent = (countParams(trainer.params) / 1e6).toFixed(2) + 'M';
-    await refreshHeatmap();
     heatmapSelect.addEventListener('change', () => trainer.runBetweenSteps(refreshHeatmap));
     // 校验通过才换诗；「自定义」选项第一次成功时加到下拉框末尾，之后只改它的诗
     const heatmapInput = $('heatmap-input') as HTMLInputElement;
@@ -259,6 +258,9 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     startToggle.addEventListener('click', () => (trainer.state === 'running' ? trainer.pause() : trainer.start()));
     startToggle.textContent = TOGGLE_TEXT[trainer.state];
     startToggle.disabled = false;
+    // 第一张热力图不挡「开始训练」：软件 WebGL 下它占启动用时的四成，机器忙时要十几秒。
+    // 和按钮可用在同一个任务里排上链，点「开始训练」后第 0 步的里程碑会排在它后面
+    trainer.runBetweenSteps(refreshHeatmap);
 
     // 重置期间禁用开始：否则 pause 之后、重新初始化之前可能又起一个循环
     resetBtn.addEventListener('click', async () => {

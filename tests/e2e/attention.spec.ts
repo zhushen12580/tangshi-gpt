@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { openApp, waitForStep, waitReady } from './helpers';
+import { openApp, waitForStep, waitHeatmap, waitReady } from './helpers';
 
 test('预设诗与小图', async ({ page }) => {
   await openApp(page, '?backend=webgl');
   await waitReady(page);
   const select = page.getByTestId('heatmap-select');
   await expect(select.locator('option:checked')).toHaveText('登鹳雀楼');
-  await expect(page.getByTestId('heatmap-step')).toHaveText('来自第 0 步的模型');
+  await waitHeatmap(page);
   const thumbs = page.getByTestId('heatmap-thumb');
   await expect(thumbs).toHaveText(Array.from({ length: 12 }, (_, i) => `第${Math.floor(i / 4) + 1}层·头${i % 4 + 1}`));
   const labels = ['<s>', ...'白日依山尽，黄河入海流。欲穷千里目，更上一层楼'];
@@ -41,6 +41,7 @@ test('预设诗与小图', async ({ page }) => {
 test('键盘读数与自定义诗', async ({ page }) => {
   await openApp(page, '?backend=webgl');
   await waitReady(page);
+  await waitHeatmap(page);
   const select = page.getByTestId('heatmap-select');
   await select.selectOption({ label: '登鹳雀楼' });
   const thumbs = page.getByTestId('heatmap-thumb');

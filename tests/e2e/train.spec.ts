@@ -1,15 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
-import { num, openApp, waitForStep, waitReady } from './helpers';
+import { holdDataset, num, openApp, waitForStep, waitHeatmap, waitReady } from './helpers';
 
 test('加载状态与页头', async ({ page }) => {
-  // 让数据晚到，才能看到加载中的状态
-  await page.route('**/data/poems.json', (r) => setTimeout(() => r.continue(), 1500));
+  // 扣住数据，才能看到加载中的状态
+  const release = await holdDataset(page);
   await openApp(page, '?backend=webgl');
 
   const btn = page.getByTestId('start-toggle');
   await expect(btn).toBeDisabled();
   await expect(btn).toHaveText('正在准备…');
 
+  release();
   await waitReady(page);
 
   const info = (await page.getByTestId('dataset-info').textContent()) ?? '';
@@ -18,6 +19,24 @@ test('加载状态与页头', async ({ page }) => {
   const [count, vocabSize] = [Number(m![1]), Number(m![2])];
   expect(count).toBeGreaterThanOrEqual(3000);
   expect(Math.abs((await num(page, 'loss-baseline')) - Math.log(vocabSize))).toBeLessThan(0.001);
+});
+
+test('「开始训练」不等第一张热力图', async ({ page }) => {
+  // 按钮变成可用的那一刻记下热力图标题。第一张热力图在软件 WebGL 下要编译一批着色器，
+  // 机器忙的时候要十几秒，挡在启动路径上会让「10 秒内可用」超时（release 发现 F-34bc53267ed5）
+  await page.addInitScript(() => {
+    new MutationObserver((_, mo) => {
+      const btn = document.querySelector<HTMLButtonElement>('[data-testid="start-toggle"]');
+      if (!btn || btn.disabled) return;
+      mo.disconnect();
+      (window as unknown as { heatmapAtReady: string | null }).heatmapAtReady =
+        document.querySelector('[data-testid="heatmap-step"]')?.textContent ?? null;
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  });
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  expect(await page.evaluate(() => (window as unknown as { heatmapAtReady: string | null }).heatmapAtReady)).toBe('');
+  await waitHeatmap(page);
 });
 
 test('训练 200 步 loss 下降', async ({ page }) => {

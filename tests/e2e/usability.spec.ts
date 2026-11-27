@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openApp, waitForStep, waitReady } from './helpers';
+import { holdDataset, openApp, waitForStep, waitHeatmap, waitReady } from './helpers';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -91,6 +91,7 @@ test('热力图轴标签不重叠，焦点框不压字', async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openApp(page, '?backend=webgl');
     await waitReady(page);
+    await waitHeatmap(page); // 还没画时没有轴标签，下面量重叠会空转通过
     await page.getByTestId('heatmap-thumb').last().focus();
     await page.keyboard.press('Tab'); // 键盘聚焦，:focus-visible 才生效
     await expect(page.getByTestId('heatmap-main')).toBeFocused();
@@ -120,13 +121,11 @@ test('热力图轴标签不重叠，焦点框不压字', async ({ page }) => {
 
 test('各状态截图', async ({ page }) => {
   const scrollWidth = () => page.evaluate(() => document.documentElement.scrollWidth);
-  await page.route('**/data/poems.json', async (r) => {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    await r.continue();
-  });
+  const release = await holdDataset(page);
   await openApp(page, '?backend=webgl');
   await expect(page.getByTestId('start-toggle')).toHaveText('正在准备…');
   await shot(page, 'loading');
+  release();
   await waitReady(page);
   await page.keyboard.press('Tab'); // 让截图里能看到焦点框
   await shot(page, 'ready');
