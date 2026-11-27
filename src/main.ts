@@ -150,12 +150,15 @@ Promise.all([backendReady, loadDatasetWithRetry()])
         renderStats(s);
         queueDraw();
       },
+      // 训练循环会等这首诗写完再走下一步，采样不会和训练并发读写权重。
+      // 先写诗再算验证 loss：诗马上出来，标「计算中…」，验证 loss 算完再补到这条记录上
+      onMilestoneStart: (step) => generate(step, null, false),
       onMilestone: async (m) => {
         $('loss-val').textContent = fmtLoss(m.valLoss);
         renderOverfit();
         queueDraw();
-        // 训练循环会等这首诗写完再走下一步，采样不会和训练并发读写权重
-        await generate(m.step, m.valLoss, false);
+        samples = samples.map((r) => (!r.manual && r.step === m.step && r.valLoss === null ? { ...r, valLoss: m.valLoss } : r));
+        renderSamples($('samples'), samples);
         await refreshHeatmap();
       },
       onState: (s) => {

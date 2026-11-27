@@ -12,6 +12,8 @@ export function guessText(x: number | null): string {
 
 /** 验证 loss 比最低点高出这么多才算回升：验证集每次是同一批诗，没有抽样噪声 */
 export const OVERFIT_DELTA = 0.1;
+/** 浮点减法的误差：5.6 − 5.5 = 0.0999…，恰好回升 0.1 也要算 */
+const FLOAT_EPS = 1e-9;
 
 export interface OverfitStatus { minStep: number; min: number; latest: number }
 
@@ -21,7 +23,7 @@ export function overfitStatus(val: { step: number; loss: number }[]): OverfitSta
   if (finite.length < 2) return null;
   const best = finite.reduce((a, b) => (b.loss < a.loss ? b : a));
   const latest = finite[finite.length - 1].loss;
-  return latest - best.loss >= OVERFIT_DELTA ? { minStep: best.step, min: best.loss, latest } : null;
+  return latest - best.loss >= OVERFIT_DELTA - FLOAT_EPS ? { minStep: best.step, min: best.loss, latest } : null;
 }
 
 export const overfitText = (s: OverfitStatus): string =>

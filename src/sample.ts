@@ -81,7 +81,8 @@ export function pushSample(list: SampleRecord[], rec: SampleRecord): SampleRecor
   return next.filter((_, i) => i !== drop);
 }
 
+/** 验证 loss 为 null：手动记录是还没有验证点（—），自动记录是这个里程碑的验证 loss 还在算 */
 export function formatMeta(r: SampleRecord): string {
-  const val = r.valLoss === null ? '—' : r.valLoss.toFixed(3);
+  const val = r.valLoss !== null ? r.valLoss.toFixed(3) : r.manual ? '—' : '计算中…';
   return `第 ${r.step} 步 · 验证 loss ${val} · ${r.manual ? '手动' : '自动'} · 温度 ${r.temperature.toFixed(1)} · ${r.constrained ? '约束' : '自由'}`;
 }

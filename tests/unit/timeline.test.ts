@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { buildTimeline, formatPercent, transcript, type Trace } from '../../explainer/timeline';
+import { buildTimeline, formatPercent, traceErrors, transcript, type Timeline, type Trace } from '../../explainer/timeline';
 import { guessCount } from '../../src/explain';
 import presets from '../../src/presets.json';
 
@@ -11,6 +11,41 @@ const scene = (name: string, t = tl) => t.scenes.find((s) => s.name === name)!.c
 const pct = formatPercent;
 const nll = (p: number) => (-Math.log(p)).toFixed(2);
 
+/** 每条字幕显示 ≥ max(2, 字数 / 8) 秒（规格下限），依次出现，总长 60–90 秒 */
+function expectReadable(t: Timeline) {
+  let last = 0;
+  for (const s of t.scenes) {
+    expect(s.start).toBeGreaterThanOrEqual(last);
+    for (const c of s.captions) {
+      expect(c.end - c.start).toBeGreaterThanOrEqual(Math.max(2, [...c.text].length / 8));
+      expect(c.start).toBeGreaterThanOrEqual(last);
+      last = c.end;
+    }
+    expect(s.end).toBe(last);
+  }
+  expect(t.duration).toBe(last);
+  expect(t.duration).toBeGreaterThanOrEqual(60);
+  expect(t.duration).toBeLessThanOrEqual(90);
+}
+
+/**
+ * review 发现 F-b4ea32f7f59f 的 trace：真实 trace 的副本，第 50–250 步的样本换成数据集里第一首含「月」「秋风」「江」「花」「酒」的诗，
+ * 第 1500 步的样本是训练集原文，验证 loss 最低点挪到第 1050 步（5.3）。意象全齐、多了背诗句，字幕按每秒 7.5 字排是 90.1 秒
+ */
+function longestTrace(): Trace {
+  const poems: string[] = JSON.parse(readFileSync('public/data/poems.json', 'utf8')).poems;
+  const inTrain = (text: string) => poems.indexOf(text) % 20 !== 0; // 与 splitTrainVal 一致：每 20 首的第 1 首进验证集
+  const samples = trace.samples.map((s) => ({ ...s }));
+  ['月', '秋风', '江', '花', '酒'].forEach((m, i) => {
+    const text = poems.find((p) => p.includes(m))!;
+    samples[i + 1] = { ...samples[i + 1], text, inTrain: inTrain(text) };
+  });
+  samples[30] = { ...samples[30], text: poems[1], inTrain: true };
+  const val = trace.val.map((v) => (v.step === 1050 ? { ...v, loss: 5.3 } : v));
+  samples[21] = { ...samples[21], val: 5.3 };
+  return { ...trace, samples, val, best: val[21] };
+}
+
 describe('buildTimeline', () => {
   test('分镜依次为片头、7 个原理分镜、片尾', () => {
     expect(tl.scenes.map((s) => s.name)).toEqual(
@@ -19,19 +54,21 @@ describe('buildTimeline', () => {
   });
 
   test('每条字幕显示 ≥ max(2, 字数 / 8) 秒，依次出现，总长 60–90 秒', () => {
-    let last = 0;
-    for (const s of tl.scenes) {
-      expect(s.start).toBeGreaterThanOrEqual(last);
-      for (const c of s.captions) {
-        expect(c.end - c.start).toBeGreaterThanOrEqual(Math.max(2, [...c.text].length / 8));
-        expect(c.start).toBeGreaterThanOrEqual(last);
-        last = c.end;
-      }
-      expect(s.end).toBe(last);
-    }
-    expect(tl.duration).toBe(last);
-    expect(tl.duration).toBeGreaterThanOrEqual(60);
-    expect(tl.duration).toBeLessThanOrEqual(90);
+    expectReadable(tl);
+  });
+
+  test('字幕多到按每秒 7.5 字排会超过 90 秒时，按规格下限每秒 8 字排，仍在 60–90 秒内', () => {
+    const long = longestTrace();
+    expect(traceErrors(long)).toEqual([]);
+    const t = buildTimeline(long);
+    expect(scene('loss 下降', t)).toContain('月、秋风、江、花、酒开始出现');
+    expect(scene('训练 loss 与验证 loss', t)).toContain('第 1500 步写出的那首，就是训练集里的原文。');
+    expectReadable(t);
+  });
+
+  test('按每秒 8 字排也超过 90 秒时报错，不出超长的视频', () => {
+    const tooLong: Trace = { ...trace, guess: { ...trace.guess, answer: '河'.repeat(200) } }; // 答案在字幕里出现两次
+    expect(() => buildTimeline(tooLong)).toThrow(/超过 90 秒/);
   });
 
   test('字幕里没有没填上的模板', () => {
@@ -47,6 +84,22 @@ describe('buildTimeline', () => {
     const { step0, best } = trace.guess;
     const text = scene('对答案、扣分');
     for (const s of ['「河」', pct(step0.p), nll(step0.p), pct(best.p), nll(best.p), `第 ${trace.best.step} 步`]) expect(text).toContain(s);
+  });
+
+  test('对答案：措辞跟着实测的方向走，概率升、降、持平都写对', () => {
+    const { step0 } = trace.guess;
+    const withBest = (p: number) => scene('对答案、扣分', buildTimeline({ ...trace, guess: { ...trace.guess, best: { ...trace.guess.best, p } } }));
+    const up = withBest(step0.p * 10);
+    expect(up).toContain(`概率升到 ${pct(step0.p * 10)}，只扣 ${nll(step0.p * 10)}`);
+
+    // 最好的模型是按整套验证集选的，这一个字的概率可能反而降了（review 发现 F-f9e0582eeb7d）
+    const down = withBest(step0.p / 2);
+    expect(down).toContain(`概率反而降到 ${pct(step0.p / 2)}，要扣 ${nll(step0.p / 2)}`);
+    expect(down).not.toMatch(/升到|只扣/);
+
+    const flat = withBest(step0.p);
+    expect(flat).toContain(`概率还是 ${pct(step0.p)}，扣分还是 ${nll(step0.p)}`);
+    expect(flat).not.toMatch(/升到|降到|只扣/);
   });
 
   test('微调参数：参数量和 batch', () => {

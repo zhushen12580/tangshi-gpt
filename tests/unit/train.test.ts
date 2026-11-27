@@ -226,6 +226,25 @@ test('第 0 步和每 50 步做里程碑：先算验证 loss 再回调；停在�
   expect(t.valHistory.map((v) => v.step)).toEqual([0, 50]);
 });
 
+test('里程碑先回调 onMilestoneStart（写诗），再算验证 loss，最后回调 onMilestone', async () => {
+  const events: string[] = [];
+  const t = make({
+    // 写诗要花时间：循环得等它写完才算验证 loss
+    onMilestoneStart: async (step) => {
+      await new Promise((r) => setTimeout(r, 20));
+      events.push(`start ${step} val ${t.valHistory.length} trained ${t.lossHistory.length}`);
+    },
+    onMilestone: ({ step }) => void events.push(`done ${step} val ${t.valHistory.length}`),
+    onStep: (s) => void (s.step === 50 && t.pause()),
+  });
+  const evalValLoss = t.evalValLoss.bind(t);
+  vi.spyOn(t, 'evalValLoss').mockImplementation(() => (events.push('eval'), evalValLoss()));
+  t.start();
+  await vi.waitFor(() => expect(t.state).toBe('paused'), { timeout: 20_000 });
+  await t.pause(); // 状态立刻变「暂停」，第 50 步的里程碑还在后台做；等循环退出
+  expect(events).toEqual(['start 0 val 0 trained 0', 'eval', 'done 0 val 1', 'start 50 val 1 trained 50', 'eval', 'done 50 val 2']);
+});
+
 test('连调两次 start() 也只有一个训练循环', async () => {
   const t = make();
   const step = t.step.bind(t);

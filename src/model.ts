@@ -187,10 +187,15 @@ export function lossFn(p: Params, cfg: GPTConfig, inputs: tf.Tensor2D, targets: 
   });
 }
 
-/** 生成用：给定已有的 id 序列（长度 ≤ ctx），返回最后一个位置对下一个字的 logits（长度 V） */
+/**
+ * 生成用：给定已有的 id 序列（长度 ≤ ctx），返回最后一个位置对下一个字的 logits（长度 V）。
+ * 输入总是补齐到 ctx 个字：因果遮罩下，后面补的字影响不到前面的位置；形状固定，WebGL 的着色器只编译一套
+ * （每种长度各编译一套时，软件 WebGL 下写一首诗要十几秒，第 0 步的诗迟迟不出来，review 发现 F-732d1f26dafd）
+ */
 export async function nextTokenLogits(p: Params, cfg: GPTConfig, ids: number[]): Promise<Float32Array> {
+  const padded = [...ids, ...Array<number>(cfg.ctx - ids.length).fill(ids[0])];
   const last = tf.tidy(() => {
-    const { logits } = forward(p, cfg, tf.tensor2d([ids], [1, ids.length], 'int32'));
+    const { logits } = forward(p, cfg, tf.tensor2d([padded], [1, cfg.ctx], 'int32'));
     return tf.reshape(tf.slice(logits, [0, ids.length - 1, 0], [1, 1, cfg.vocabSize]), [cfg.vocabSize]);
   });
   const out = (await last.data()) as Float32Array;

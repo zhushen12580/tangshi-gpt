@@ -105,10 +105,15 @@ test('只用 CPU 时，验证中和一步算到一半点「暂停」，都在 2 
   };
 
   expect((await click()).text).toBe('暂停');
-  await page.waitForTimeout(750); // 第 0 步的里程碑：CPU 下验证集前向要算半分钟
+  // 第 0 步的里程碑先写诗、再算验证 loss：诗出来以后，CPU 下验证集前向要算半分钟
+  const meta = page.getByTestId('sample-item').locator('.sample-meta');
+  await expect(meta).toHaveText(/验证 loss 计算中…/, { timeout: 120_000 });
+  await page.waitForTimeout(750);
   expect((await expectQuickPause()).step).toBe('0');
+  await expect(meta).toHaveText(/验证 loss 计算中…/); // 暂停确实落在验证中
 
-  await expect(page.getByTestId('sample-item')).toHaveCount(1, { timeout: 120_000 }); // 里程碑在后台做完
+  // 里程碑在后台做完：验证 loss 算完才补到记录上
+  await expect(meta).toHaveText(/验证 loss \d+\.\d{3}/, { timeout: 120_000 });
   // 先完整训练一步，量出 CPU 上一步要多久
   const resumed = await click();
   expect(resumed.text).toBe('暂停');

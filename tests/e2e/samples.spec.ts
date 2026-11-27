@@ -9,16 +9,17 @@ test('生成记录从第 0 步开始', async ({ page }) => {
   const items = page.getByTestId('sample-item');
   const btn = page.getByTestId('start-toggle');
   await btn.click();
-  await expect(items.filter({ has: page.locator('.sample-meta', { hasText: '第 0 步' }) })).toHaveCount(1, {
-    timeout: 30_000,
-  });
+  // 点了就出来（review 发现 F-732d1f26dafd：以前要等验证集和 24 种长度的着色器，软件 WebGL 下 16 秒）；验证 loss 随后补上
+  const zero = items.filter({ has: page.locator('.sample-meta', { hasText: '第 0 步' }) });
+  await expect(zero).toHaveCount(1, { timeout: 5_000 });
   await expect(page.getByTestId('samples-empty')).toHaveCount(0);
+  await expect(zero.locator('.sample-meta')).toHaveText(/^第 0 步 · 验证 loss \d+\.\d{3} · 自动/, { timeout: 30_000 });
 
   await waitForStep(page, 100);
   // 此刻通常正在做第 100 步的里程碑：暂停立刻生效，这首诗在后台写完。软件 WebGL 下 24 次单样本前向约 10 秒
   await btn.click();
   await expect(btn).toHaveText('继续', { timeout: 2_000 });
-  await expect(items.filter({ has: page.locator('.sample-meta', { hasText: /^第 100 步 / }) })).toHaveCount(1, {
+  await expect(items.filter({ has: page.locator('.sample-meta', { hasText: /^第 100 步 · 验证 loss \d/ }) })).toHaveCount(1, {
     timeout: 60_000,
   });
 

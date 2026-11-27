@@ -126,3 +126,18 @@ test('nextTokenLogits 等于 forward 在最后位置的 logits', async () => {
   expect(got).toHaveLength(11);
   Array.from(got).forEach((x, v) => expect(Math.abs(x - want[v])).toBeLessThan(1e-5));
 });
+
+test('nextTokenLogits 对任何长度都按 [1, ctx] 前向，结果不受补齐影响', async () => {
+  const p = initParams(MICRO, 6);
+  const seq = [10, 3, 1, 4, 1, 5, 9, 2];
+  const want = forward(p, MICRO, tf.tensor2d([seq], [1, 8], 'int32')).logits.arraySync()[0];
+  const shapes: string[] = [];
+  for (let n = 1; n <= MICRO.ctx; n++) {
+    let got!: Float32Array;
+    const { kernels } = await tf.profile(async () => void (got = await nextTokenLogits(p, MICRO, seq.slice(0, n))));
+    shapes.push(JSON.stringify(kernels.map((k) => k.inputShapes)));
+    Array.from(got).forEach((x, v) => expect(Math.abs(x - want[n - 1][v])).toBeLessThan(1e-5));
+  }
+  // 每种长度跑的算子和形状都一样（只差 slice 的起点）：WebGL 只编译一套着色器
+  expect(new Set(shapes).size).toBe(1);
+});

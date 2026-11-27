@@ -130,6 +130,8 @@ test('pushSample：新的在最前面；超过 200 条先丢最旧的，但第 0
 test('formatMeta：步数、验证 loss、自动/手动、温度、约束/自由', () => {
   expect(formatMeta(rec(50))).toBe('第 50 步 · 验证 loss 5.432 · 自动 · 温度 0.8 · 约束');
   expect(formatMeta({ ...rec(0, true), valLoss: null })).toBe('第 0 步 · 验证 loss — · 手动 · 温度 0.8 · 约束');
+  // 自动记录先写诗、后算验证 loss：算完之前标「计算中…」
+  expect(formatMeta({ ...rec(0), valLoss: null })).toBe('第 0 步 · 验证 loss 计算中… · 自动 · 温度 0.8 · 约束');
   expect(formatMeta({ ...rec(100), temperature: 1.5, constrained: false })).toBe(
     '第 100 步 · 验证 loss 5.432 · 自动 · 温度 1.5 · 自由',
   );

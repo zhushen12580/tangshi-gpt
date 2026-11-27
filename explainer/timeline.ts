@@ -82,7 +82,10 @@ export const SITE = 'zhushen12580.github.io/tangshi-gpt';
 export const BACKEND_LABEL = { webgpu: 'WebGPU', webgl: 'WebGL' } as const;
 const MOTIFS = ['月', '秋风', '江', '花', '酒'];
 const CAPTION_MIN = 2; // 每条字幕至少显示的秒数
-const CHARS_PER_SECOND = 7.5; // 每条显示 max(CAPTION_MIN, 字数 / CHARS_PER_SECOND) 秒；规格下限是 8，用计划的 7 总长 91.7 秒超了 90
+// 每条显示 max(CAPTION_MIN, 字数 / 字速) 秒。先按 7.5 字/秒排（计划的 7 总长 91.7 秒超了 90）；
+// 重录后字幕变长、超过 90 秒时，再按规格下限 8 字/秒排（review 发现 F-b4ea32f7f59f）
+const CHARS_PER_SECOND = [7.5, 8];
+const DURATION = { min: 60, max: 90 }; // 总长（秒）
 export const TRANSITION = 0.5; // 分镜之间的过渡秒数
 export const PEAK_ROW = 10; // 注意力分镜看第 10 位「海」那一行
 
@@ -108,6 +111,20 @@ export function attentionPeak(t: Trace): { layer: number; head: number; col: num
   return peak;
 }
 
+/**
+ * 「对答案」的最后一句：最好的模型是按整套验证集的 loss 选的，「河」这一个字的概率不一定升，
+ * 措辞跟着实测方向走；显示出来的数相同就说「还是」（review 发现 F-f9e0582eeb7d）
+ */
+function guessResult(t: Trace): string {
+  const { step0, best } = t.guess;
+  const up = best.p > step0.p;
+  const [p0, p1, l0, l1] = [formatPercent(step0.p), formatPercent(best.p), nll(step0.p), nll(best.p)];
+  const prob = p0 === p1 ? `概率还是 ${p1}` : up ? `概率升到 ${p1}` : `概率反而降到 ${p1}`;
+  const cost = l0 === l1 ? `扣分还是 ${l1}` : up ? `只扣 ${l1}` : `要扣 ${l1}`;
+  const why = up || p0 === p1 ? '' : '：整体猜得更准，不等于每个字都更准';
+  return `练到第 ${t.best.step} 步，${prob}，${cost}${why}。`;
+}
+
 /** 每个分镜的字幕文字，按规格的分镜表填数 */
 function sceneTexts(t: Trace): [string, string[]][] {
   const { meta, best, guess } = t;
@@ -121,7 +138,7 @@ function sceneTexts(t: Trace): [string, string[]][] {
     ['对答案、扣分', [
       `训练时拿真唐诗对答案：这里正确的字是「${guess.answer}」。`,
       `刚开始，它给「${guess.answer}」的概率只有 ${formatPercent(guess.step0.p)}，扣分 loss = −ln(概率) ≈ ${nll(guess.step0.p)}。`,
-      `练到第 ${best.step} 步，概率升到 ${formatPercent(guess.best.p)}，只扣 ${nll(guess.best.p)}。`,
+      guessResult(t),
     ]],
     ['微调参数', [
       `每一步，把全部约 ${Math.round(meta.params / 1e4)} 万个参数（${meta.params}）都往“猜对”的方向挪一点。`,
@@ -148,15 +165,24 @@ function sceneTexts(t: Trace): [string, string[]][] {
   ];
 }
 
-/** 字幕依次出现，每条 max(CAPTION_MIN, 字数 / CHARS_PER_SECOND) 秒；分镜之间过渡 TRANSITION 秒 */
-export function buildTimeline(t: Trace): Timeline {
+/** 字幕依次出现，每条 max(CAPTION_MIN, 字数 / rate) 秒；分镜之间过渡 TRANSITION 秒 */
+function layout(texts: [string, string[]][], rate: number): Timeline {
   let at = -TRANSITION;
-  const scenes = sceneTexts(t).map(([name, texts], id) => {
+  const scenes = texts.map(([name, captionTexts], id) => {
     const start = (at += TRANSITION);
-    const captions = texts.map((text) => ({ text, start: at, end: (at += Math.max(CAPTION_MIN, [...text].length / CHARS_PER_SECOND)) }));
+    const captions = captionTexts.map((text) => ({ text, start: at, end: (at += Math.max(CAPTION_MIN, [...text].length / rate)) }));
     return { id, name, start, end: at, captions };
   });
   return { scenes, duration: at };
+}
+
+/** 按 CHARS_PER_SECOND 依次试，用第一个不超过 90 秒的；怎么排都不在 60–90 秒内就报错，渲染命令以非 0 退出，不写视频 */
+export function buildTimeline(t: Trace): Timeline {
+  const texts = sceneTexts(t);
+  const tl = CHARS_PER_SECOND.map((rate) => layout(texts, rate)).find((x) => x.duration <= DURATION.max);
+  if (!tl) throw new Error(`字幕按每秒 ${CHARS_PER_SECOND.at(-1)} 字排也超过 ${DURATION.max} 秒：只能删减不含数字的字幕，不能改数字`);
+  if (tl.duration < DURATION.min) throw new Error(`字幕总长 ${tl.duration.toFixed(1)} 秒，不到 ${DURATION.min} 秒`);
+  return tl;
 }
 
 /** 文字版：片名，再按分镜写名称和字幕（不含 BOM，写文件时再加） */

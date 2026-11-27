@@ -27,6 +27,11 @@ describe('overfitStatus', () => {
     expect(overfitStatus(pts([0, 8.2], [50, 5.5], [100, 5.7]))).toEqual({ minStep: 50, min: 5.5, latest: 5.7 });
   });
 
+  it('恰好回升 0.1 也报（5.6 − 5.5 在浮点里是 0.0999…）', () => {
+    expect(overfitStatus(pts([0, 8.2], [50, 5.5], [100, 5.6]))).toEqual({ minStep: 50, min: 5.5, latest: 5.6 });
+    expect(overfitStatus(pts([0, 8.2], [50, 0.7], [100, 0.8]))).toEqual({ minStep: 50, min: 0.7, latest: 0.8 });
+  });
+
   it('回升不到 0.1、一直下降、只有 1 个点、没有点时不报', () => {
     expect(overfitStatus(pts([0, 8.2], [50, 5.5], [100, 5.59]))).toBeNull();
     expect(overfitStatus(pts([0, 8.2], [50, 5.5], [100, 5.1]))).toBeNull();

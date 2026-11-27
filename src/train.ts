@@ -43,6 +43,8 @@ export interface TrainerOptions {
   rng?: () => number;
   onStep?: (s: TrainStats) => void;
   onState?: (s: TrainState) => void;
+  /** 里程碑一开始、算验证 loss 之前调用（写诗用）：软件 WebGL 下验证集要算两三秒，第 0 步的诗点了「开始训练」就要出来 */
+  onMilestoneStart?: (step: number) => Promise<void> | void;
   onMilestone?: (m: { step: number; valLoss: number }) => Promise<void> | void;
 }
 
@@ -325,10 +327,11 @@ export class Trainer {
     this.runStartedAt = null;
   }
 
-  /** 步数是 50 的倍数且这一步还没做过里程碑时：算验证 loss，记下来，再等回调（采样等）做完 */
+  /** 步数是 50 的倍数且这一步还没做过里程碑时：先等 onMilestoneStart（写诗），再算验证 loss、记下来，最后等 onMilestone 做完 */
   private async milestoneIfDue(): Promise<void> {
     const step = this.lossHistory.length;
     if (step % MILESTONE_EVERY !== 0 || this.lastMilestoneStep === step) return;
+    await this.o.onMilestoneStart?.(step);
     const valLoss = await this.evalValLoss();
     this.valHistory.push({ step, loss: valLoss });
     this.lastMilestoneStep = step;
