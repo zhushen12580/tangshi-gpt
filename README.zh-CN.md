@@ -4,7 +4,7 @@
 
 [English](README.md) | 简体中文
 
-**在线体验：https://zhushen12580.github.io/tangshi-gpt/**（推荐 Chrome 或 Edge 113+，可以用上 WebGPU）
+**在线体验：<https://zhushen12580.github.io/tangshi-gpt/>**（推荐 Chrome 或 Edge 113+，可以用上 WebGPU）
 
 ![唐诗 GPT 用 WebGPU 训练到第 580 步：loss 曲线、验证 loss 圆点，以及每 50 步生成的诗](docs/images/demo.png)
 

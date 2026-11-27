@@ -36,3 +36,17 @@ test('仓库地址：README 的 clone 命令和页脚 GitHub 链接指向同一�
   expect(urls.length).toBeGreaterThanOrEqual(2);
   for (const url of urls) expect([REPO, `${REPO}.git`]).toContain(url);
 });
+
+test('在线体验地址：两份 README 都链接到本仓库的 Pages 站点，GitHub 渲染后链接不多带字', () => {
+  // Pages 地址是 https://<owner>.github.io/<repo>/，与 vite 子路径 /tangshi-gpt/ 一致；站点是否已启用只能联网查，见 progress。
+  // GFM 的裸网址一直延伸到空白或 <，只去掉结尾的 ?!.,:*_~，所以「网址**（推荐」会把「**（推荐」也算进链接
+  const PAGES = 'https://zhushen12580.github.io/tangshi-gpt/';
+  for (const path of ['README.md', 'README.zh-CN.md']) {
+    const prose = read(path).replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
+    const bare = [...prose.matchAll(/(?<![(<])https?:\/\/[^\s<]*/g)].map(([u]) => u.replace(/[?!.,:*_~]+$/, ''));
+    for (const url of bare) expect(url, path).toMatch(/^[\x21-\x29\x2B-\x7E]+$/); // 只有可见 ASCII，且没有 *
+    const pages = prose.match(/https:\/\/[\w-]+\.github\.io\/[^\s)*>]*/g) ?? [];
+    expect(pages, path).toContain(PAGES);
+    for (const url of pages) expect(url, path).toBe(PAGES);
+  }
+});
