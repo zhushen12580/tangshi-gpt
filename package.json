@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "build:data": "node scripts/build-dataset.mjs"
+    "build:data": "node scripts/build-dataset.mjs",
+    "build:explainer-trace": "node scripts/build-explainer.mjs trace"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
