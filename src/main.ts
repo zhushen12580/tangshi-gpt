@@ -5,7 +5,7 @@ import {
   type Checkpoint,
 } from './checkpoint';
 import { BOS, decode, encode, loadDataset, validateCustomPoem, type Dataset } from './data';
-import { guessText } from './explain';
+import { guessText, overfitStatus, overfitText } from './explain';
 import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
@@ -114,6 +114,14 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       });
     };
 
+    // 验证 loss 从最低点回升时提示过拟合；每个里程碑、载入、重置之后都重新判断
+    const renderOverfit = () => {
+      const status = overfitStatus(trainer.valHistory);
+      const notice = $('overfit-notice');
+      notice.textContent = status ? overfitText(status) : '';
+      notice.hidden = status === null;
+    };
+
     // 用控件上当前的温度和格式开关写一首诗，加进生成记录
     const generate = async (step: number, valLoss: number | null, manual: boolean) => {
       const temperature = Number(temperatureInput.value);
@@ -142,6 +150,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       },
       onMilestone: async (m) => {
         $('loss-val').textContent = fmtLoss(m.valLoss);
+        renderOverfit();
         queueDraw();
         // 训练循环会等这首诗写完再走下一步，采样不会和训练并发读写权重
         await generate(m.step, m.valLoss, false);
@@ -245,6 +254,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
           await trainer.runBetweenSteps(refreshHeatmap);
           renderStats(trainer.stats());
           $('loss-val').textContent = fmtLoss(trainer.valHistory.at(-1)?.loss ?? null);
+          renderOverfit();
           queueDraw();
           saveStatus.textContent = `已载入：第 ${saved.step} 步`;
         } finally {
@@ -281,6 +291,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
         syncLatestPoem();
         $('train-error').textContent = '';
         $('loss-val').textContent = fmtLoss(null);
+        renderOverfit();
         renderStats(trainer.stats());
         queueDraw();
         await trainer.runBetweenSteps(refreshHeatmap);

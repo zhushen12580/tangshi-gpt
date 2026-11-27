@@ -104,3 +104,55 @@ test('窄屏', async ({ page }) => {
   expect(box.y + box.height).toBeLessThanOrEqual(667);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
 });
+
+test('过拟合提示', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const notice = page.getByTestId('overfit-notice');
+  await expect(notice).toBeHidden();
+  const toggle = page.getByTestId('start-toggle');
+  await toggle.click();
+  await waitForStep(page, 3);
+  await expect(notice).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveText('继续', { timeout: 60_000 });
+  await page.getByTestId('save').click();
+  await expect(page.getByTestId('save-status')).toHaveText(/^已保存：第 \d+ 步$/, { timeout: 60_000 });
+
+  // 把存档改成验证 loss 8.2 → 5.5 → 5.7：第 50 步最低，第 100 步回升 0.2
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('tangshi-gpt', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('checkpoints', 'readwrite');
+      tx.onabort = () => { db.close(); reject(tx.error); };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      const store = tx.objectStore('checkpoints');
+      const get = store.get('latest');
+      get.onsuccess = () => {
+        const c = get.result;
+        const loss = c.lossHistory as number[];
+        store.put({
+          ...c,
+          step: 100,
+          valHistory: [{ step: 0, loss: 8.2 }, { step: 50, loss: 5.5 }, { step: 100, loss: 5.7 }],
+          lossHistory: [...loss, ...Array(100 - loss.length).fill(loss.at(-1))],
+        }, 'latest');
+      };
+    };
+  }));
+  await page.reload();
+  await waitReady(page);
+  await page.getByTestId('load').click();
+  await expect(page.getByTestId('save-status')).toHaveText('已载入：第 100 步', { timeout: 60_000 });
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveText(
+    '它开始背诗了（过拟合）：验证 loss 从第 50 步的最低点 5.500 回升到 5.700。这时写出来的诗，可能就是训练集里的原文。',
+  );
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByTestId('reset').click();
+  await expect(page.getByTestId('step')).toHaveText('0', { timeout: 60_000 });
+  await expect(notice).toBeHidden();
+});
