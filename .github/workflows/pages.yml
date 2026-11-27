@@ -1,6 +1,3 @@
-# 推送到 main 时：安装依赖 → 单元测试 → 构建 → 把 dist/ 发布到 GitHub Pages。
-# 需要在仓库 Settings → Pages 把 Source 设为 GitHub Actions。
-# e2e 不在这里跑：托管 runner 没有 GPU，软件 WebGL 训练太慢，e2e 在本地运行。
 name: Deploy to GitHub Pages
 
 on:
@@ -13,12 +10,9 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,12 +23,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
-
   deploy:
+    if: ${{ !github.event.repository.private }}
     needs: build
     runs-on: ubuntu-latest
     environment:
