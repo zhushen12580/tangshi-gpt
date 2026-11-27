@@ -7,12 +7,12 @@ export type BackendName = 'webgpu' | 'webgl' | 'cpu';
 export const BACKEND_LABEL: Record<BackendName, string> = { webgpu: 'WebGPU', webgl: 'WebGL', cpu: 'CPU' };
 const ALL: BackendName[] = ['webgpu', 'webgl', 'cpu'];
 
-/** auto（或缺省）从头开始；指定某个后端时从它开始往下；未知值按 auto 处理并提示 */
+/** auto（或缺省）从头开始；指定某个后端时从它开始往下；未知值（包括写了参数但值为空）按 auto 处理并提示 */
 export function backendOrder(search: string): { order: BackendName[]; notices: string[] } {
-  const want = new URLSearchParams(search).get('backend') || 'auto';
+  const want = new URLSearchParams(search).get('backend') ?? 'auto';
   const i = ALL.indexOf(want as BackendName);
   if (i >= 0) return { order: ALL.slice(i), notices: [] };
-  return { order: ALL, notices: want === 'auto' ? [] : [`未知后端 ${want}，已自动选择`] };
+  return { order: ALL, notices: want === 'auto' ? [] : [`未知后端${want ? ` ${want}` : '（空值）'}，已自动选择`] };
 }
 
 /** 按顺序尝试，第一个成功的就用；tryOne 返回 false 或抛错都算失败 */

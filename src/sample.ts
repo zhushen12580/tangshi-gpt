@@ -65,6 +65,7 @@ export async function samplePoem(
   for (let pos = 0; pos < POEM_LEN; pos++) {
     const logits = maskLogits(await nextLogits(seq), pos, ids, opts.constrain);
     seq = [...seq, sampleFromLogits(logits, opts.temperature, opts.rng)];
+    await new Promise((r) => setTimeout(r, 0)); // 每个字之后让出主线程：CPU 后端一首诗要几秒，期间点击也要能响应
   }
   return seq.slice(1);
 }

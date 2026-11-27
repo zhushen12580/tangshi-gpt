@@ -8,7 +8,7 @@ import { BOS, decode, encode, loadDataset, validateCustomPoem, type Dataset } fr
 import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
-import { BATCH_SIZE, CPU_BATCH_SIZE, Trainer, type TrainState, type TrainStats } from './train';
+import { BATCH_SIZE, CPU_BATCH_SIZE, CPU_MICRO_BATCH, Trainer, type TrainState, type TrainStats } from './train';
 import { createHeatmap } from './ui/heatmap';
 import { drawLossChart } from './ui/lossChart';
 import { renderSamples } from './ui/samples';
@@ -127,6 +127,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       val: ds.val,
       bosId: ds.bosId,
       batchSize: backend === 'cpu' ? CPU_BATCH_SIZE : BATCH_SIZE,
+      microBatch: backend === 'cpu' ? CPU_MICRO_BATCH : undefined,
       onStep: (s) => {
         renderStats(s);
         queueDraw();

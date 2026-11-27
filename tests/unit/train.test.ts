@@ -62,9 +62,9 @@ test('恢复权重、历史和 Adam，使用相同 batch 继续训练时结果�
     expect(b.stats().ema).toBe(a.stats().ema);
 
     random = mulberry32(42);
-    const expectedLoss = await a.step();
+    const expectedLoss = (await a.step())!;
     random = mulberry32(42);
-    expect(Math.abs(await b.step() - expectedLoss)).toBeLessThan(1e-4);
+    expect(Math.abs((await b.step())! - expectedLoss)).toBeLessThan(1e-4);
     // step() 返回的是更新前的 loss，再比较更新后的模型以验证 Adam 动量。
     expect(await b.evalValLoss()).toBeCloseTo(await a.evalValLoss(), 5);
     expect(snapshot.lossHistory).toHaveLength(5);
@@ -332,4 +332,60 @@ test('loss 出现 NaN 时自动停下，状态为 nan，不记进历史', async 
   expect(calls).toBe(1);
   expect(t.stats().step).toBe(2);
   expect(states).toEqual(['running', 'nan']);
+});
+
+test('microBatch：分块求梯度再累加，与整个 batch 一步的 loss、权重和验证 loss 相同', async () => {
+  const whole = make();
+  const split = new Trainer({ cfg: MICRO, train: SEQS, val: SEQS.slice(0, 4), bosId: BOS,
+    batchSize: 8, lr: 1e-2, seed: 1, rng: mulberry32(1), microBatch: 3 }); // 8 行切成 3、3、2，最后一块不满
+  try {
+    for (let i = 0; i < 2; i++) expect((await split.step())!).toBeCloseTo((await whole.step())!, 5);
+    const tensors = tf.memory().numTensors; // Adam 矩变量在第一步就建好了；之后累加梯度不能留下张量
+    expect((await split.step())!).toBeCloseTo((await whole.step())!, 5);
+    expect(tf.memory().numTensors).toBe(tensors);
+    for (const [name, w] of Object.entries(whole.params)) {
+      const a = await w.data();
+      const b = await split.params[name].data();
+      expect(Math.max(...a.map((x, i) => Math.abs(x - b[i])))).toBeLessThan(1e-5);
+    }
+    expect(await split.evalValLoss()).toBeCloseTo(await whole.evalValLoss(), 5); // 验证集 4 首切成 3、1
+  } finally {
+    split.dispose();
+  }
+});
+
+test('microBatch：一步算到一半点暂停，放弃这一步（权重不变、不留张量），之后照常继续', async () => {
+  const base = mulberry32(1);
+  let pauseOnNextBatch = false;
+  let paused: Promise<void> | undefined;
+  let before: { wte: number[]; numTensors: number } | undefined;
+  const t: Trainer = make({
+    microBatch: 2,
+    onStep: (s) => {
+      if (s.step !== 2) return;
+      pauseOnNextBatch = true;
+      before = { wte: Array.from(t.params.wte.dataSync()), numTensors: tf.memory().numTensors };
+    },
+    // 第 3 步一开始抽样时就点暂停：这时这一步的 4 块一块都还没算
+    rng: () => {
+      if (pauseOnNextBatch) {
+        pauseOnNextBatch = false;
+        paused = t.pause();
+      }
+      return base();
+    },
+  });
+  t.start();
+  await vi.waitFor(() => expect(paused).toBeDefined(), { timeout: 10_000 });
+  expect(t.state).toBe('paused');
+  await paused;
+  expect(t.stats().step).toBe(2);
+  expect(t.lossHistory).toHaveLength(2);
+  expect(Array.from(t.params.wte.dataSync())).toEqual(before!.wte);
+  expect(tf.memory().numTensors).toBe(before!.numTensors);
+
+  t.start();
+  await untilStep(3);
+  await t.pause();
+  expect(t.lossHistory.every(Number.isFinite)).toBe(true);
 });

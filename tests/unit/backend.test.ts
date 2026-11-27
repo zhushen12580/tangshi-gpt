@@ -6,7 +6,14 @@ import { backendOrder, chooseBackend, initBackend, smokeTest, type BackendName }
 test('backendOrder：auto 或缺省时为 webgpu → webgl → cpu', () => {
   const auto = { order: ['webgpu', 'webgl', 'cpu'], notices: [] };
   expect(backendOrder('')).toEqual(auto);
+  expect(backendOrder('?lang=zh')).toEqual(auto);
   expect(backendOrder('?backend=auto')).toEqual(auto);
+});
+
+test('backendOrder：写了参数但值为空，按 auto 处理并提示（和缺省不同）', () => {
+  const empty = { order: ['webgpu', 'webgl', 'cpu'], notices: ['未知后端（空值），已自动选择'] };
+  expect(backendOrder('?backend=')).toEqual(empty);
+  expect(backendOrder('?backend')).toEqual(empty);
 });
 
 test('backendOrder：指定后端时从它开始往下', () => {

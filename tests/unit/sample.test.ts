@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import {
   formatMeta,
   isWujue,
@@ -70,6 +70,26 @@ test('samplePoem：约束时 5/11/17/23 位依次是「，。，。」，其他�
     if (pos % 6 === 5) expect(id).toBe(pos % 12 === 5 ? IDS.comma : IDS.period);
     else expect([IDS.comma, IDS.period, IDS.bos]).not.toContain(id);
   });
+});
+
+test('samplePoem：每写一个字让出一次主线程（CPU 后端一首诗要算好几秒，期间点击也要能响应）', async () => {
+  let calls = 0;
+  const counting = async () => {
+    calls++;
+    return new Float32Array(V);
+  };
+  let callsWhenTimerFired = -1;
+  setTimeout(() => (callsWhenTimerFired = calls), 0);
+  const timers = vi.spyOn(globalThis, 'setTimeout');
+  try {
+    await samplePoem(counting, IDS, { temperature: 1, constrain: false, rng: mulberry32(1) });
+    expect(timers).toHaveBeenCalledTimes(24); // 每个字之后一次
+  } finally {
+    timers.mockRestore();
+  }
+  expect(calls).toBe(24);
+  expect(callsWhenTimerFired).toBeGreaterThanOrEqual(0); // 真的让出去了：samplePoem 还没写完，别的宏任务就已经执行
+  expect(callsWhenTimerFired).toBeLessThan(24);
 });
 
 test('samplePoem：不约束、logits 偏向「。」时，第 0 位就是「。」', async () => {

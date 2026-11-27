@@ -17,7 +17,7 @@ About 1500 steps in roughly 3 minutes is the design target, and it assumes an or
 | --- | --- |
 | WebGPU on an Intel Arc 130T integrated GPU | ~7 steps/s |
 | Software WebGL (SwiftShader, e.g. headless test runs) | ~0.7 steps/s |
-| CPU backend | very slow: ~15 s per step |
+| CPU backend | very slow: ~20 s per step |
 
 ## Requirements
 

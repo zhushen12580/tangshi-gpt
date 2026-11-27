@@ -9,11 +9,15 @@ import { initParams, lossFn, type GPTConfig, type Params } from './model';
 export const LEARNING_RATE = 2e-3;
 export const BATCH_SIZE = 64;
 export const CPU_BATCH_SIZE = 32; // CPU 后端 batch 64 一步约 30 秒，减半后第 1 步才能稳定在点击后 60 秒内出来
+export const CPU_MICRO_BATCH = 1; // CPU 后端每次只算 1 行（约 0.5 秒）就让出主线程，「暂停」才能在 2 秒内响应
 export const MILESTONE_EVERY = 50;
 const CURRENT_WINDOW = 10; // 「当前 loss」取最近 10 步的平均
 const SPEED_WINDOW = 20; // 「步/秒」按最近 20 步计算
 const EMA_BETA = 0.9;
 const VAL_CHUNK = 64; // 验证集按 64 首一块做前向，显存占用不超过训练的一个 batch
+
+/** 让出主线程：排到点击、重绘等任务之后再接着算 */
+const yieldToUI = () => new Promise((r) => setTimeout(r, 0));
 
 export type TrainState = 'idle' | 'running' | 'paused' | 'nan';
 
@@ -32,6 +36,8 @@ export interface TrainerOptions {
   val: number[][];
   bosId: number;
   batchSize?: number;
+  /** 设了就把每个 batch 切成这么多行一块分别求梯度，块与块之间让出主线程（CPU 后端用）；验证集也按这个大小分块 */
+  microBatch?: number;
   lr?: number;
   seed?: number;
   rng?: () => number;
@@ -88,19 +94,15 @@ export class Trainer {
     };
   }
 
-  /** 训练一步：随机取一个 batch，前向、反向、Adam 更新，返回这一步的 loss */
-  async step(): Promise<number> {
+  /**
+   * 训练一步：随机取一个 batch，前向、反向、Adam 更新，返回这一步的 loss。
+   * 分块训练时，这一步算到一半收到暂停请求就整步放弃（权重不动），返回 null
+   */
+  async step(): Promise<number | null> {
     const B = this.o.batchSize ?? BATCH_SIZE;
     const { inputs, targets } = makeBatch(this.o.train, this.o.bosId, B, this.o.rng);
-    const T = inputs.length / B;
-    const loss = tf.tidy(() => {
-      const x = tf.tensor2d(inputs, [B, T], 'int32');
-      const y = tf.tensor2d(targets, [B, T], 'int32');
-      return this.optimizer.minimize(() => lossFn(this.params, this.cfg, x, y), true, Object.values(this.params))!;
-    });
-    const value = (await loss.data())[0];
-    loss.dispose();
-    if (!Number.isFinite(value)) return value; // 数值异常：不记进历史，由 run() 停下循环
+    const value = this.o.microBatch ? await this.microBatchUpdate(inputs, targets, B) : await this.batchUpdate(inputs, targets, B);
+    if (value === null || !Number.isFinite(value)) return value; // 数值异常：不记进历史，由 run() 停下循环
 
     this.lossHistory.push(value);
     this.ema = this.ema === null ? value : EMA_BETA * this.ema + (1 - EMA_BETA) * value;
@@ -109,12 +111,61 @@ export class Trainer {
     return value;
   }
 
+  /** 整个 batch 一次前向、反向、更新 */
+  private async batchUpdate(inputs: Int32Array, targets: Int32Array, B: number): Promise<number> {
+    const T = inputs.length / B;
+    const loss = tf.tidy(() => {
+      const x = tf.tensor2d(inputs, [B, T], 'int32');
+      const y = tf.tensor2d(targets, [B, T], 'int32');
+      return this.optimizer.minimize(() => lossFn(this.params, this.cfg, x, y), true, Object.values(this.params))!;
+    });
+    const value = (await loss.data())[0];
+    loss.dispose();
+    return value;
+  }
+
+  /**
+   * CPU 后端一整个 batch 要连续算十几秒，期间点击没有反应。这里切成 microBatch 行一块，
+   * 逐块求梯度累加，最后用总梯度更新一次（结果和整个 batch 一样）；块与块之间让出主线程并检查暂停
+   */
+  private async microBatchUpdate(inputs: Int32Array, targets: Int32Array, B: number): Promise<number | null> {
+    const T = inputs.length / B;
+    const M = this.o.microBatch!;
+    const vars = Object.values(this.params);
+    let sum: tf.NamedTensorMap = {};
+    let value = 0;
+    try {
+      for (let r = 0; r < B; r += M) {
+        const n = Math.min(M, B - r);
+        const { value: loss, grads } = tf.tidy(() => {
+          const rows = (a: Int32Array) => tf.tensor2d(a.subarray(r * T, (r + n) * T), [n, T], 'int32');
+          const x = rows(inputs);
+          const y = rows(targets);
+          // 按行数加权：各块的 loss 和梯度加起来，正好是整个 batch 的平均
+          return tf.variableGrads(() => tf.mul(lossFn(this.params, this.cfg, x, y), n / B), vars);
+        });
+        value += (await loss.data())[0];
+        const prev = sum;
+        sum = tf.tidy(() => Object.fromEntries(Object.entries(grads).map(([k, g]) => [k, prev[k] ? tf.add(prev[k], g) : tf.clone(g)])));
+        tf.dispose([loss, ...Object.values(prev), ...Object.values(grads)]);
+        await yieldToUI();
+        if (this.stopRequested) return null;
+      }
+      this.optimizer.applyGradients(sum); // Adam 更新也要算一会儿，单独占一段
+      return value;
+    } finally {
+      tf.dispose(Object.values(sum));
+    }
+  }
+
   /** 在整个验证集上做前向（不求梯度），返回平均 loss */
   async evalValLoss(): Promise<number> {
     const { val, bosId } = this.o;
+    const size = this.o.microBatch ?? VAL_CHUNK;
     let sum = 0;
-    for (let i = 0; i < val.length; i += VAL_CHUNK) {
-      const chunk = val.slice(i, i + VAL_CHUNK);
+    for (let i = 0; i < val.length; i += size) {
+      if (i > 0) await yieldToUI();
+      const chunk = val.slice(i, i + size);
       const loss = tf.tidy(() => {
         const x = tf.tensor2d(chunk.map((p) => [bosId, ...p.slice(0, -1)]), undefined, 'int32');
         const y = tf.tensor2d(chunk, undefined, 'int32');
@@ -253,10 +304,12 @@ export class Trainer {
       while (!this.stopRequested && !nan) {
         await this.runBetweenSteps(async () => {
           if (this.stopRequested) return; // 等待采样时也可能收到暂停请求
-          nan = !Number.isFinite(await this.step()); // 通过 this.step 调用，单测会 spy 它
+          const loss = await this.step(); // 通过 this.step 调用，单测会 spy 它
+          if (loss === null) return; // 算到一半暂停了，这一步已放弃
+          nan = !Number.isFinite(loss);
           if (!nan) await this.milestoneIfDue(); // 紧跟在这一步后面：停在第 50 步时，它的里程碑也已经做完
         });
-        await new Promise((r) => setTimeout(r, 0)); // 让出主线程，界面才能刷新、响应点击
+        await yieldToUI(); // 界面才能刷新、响应点击
       }
     } finally {
       this.stopClock();
