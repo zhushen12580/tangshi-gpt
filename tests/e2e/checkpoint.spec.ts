@@ -157,3 +157,31 @@ test('确认删除后马上重新打开页面，主线程正忙也不会让存�
   await waitReady(page);
   await expect(status).toHaveText('');
 });
+
+test('确认删除时别的页面刚存了新存档：不删，也不说已删除', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const status = page.getByTestId('save-status');
+  await page.getByTestId('save').click();
+  await expect(status).toHaveText('已保存：第 0 步', { timeout: 60_000 });
+  // 模拟另一个标签页：把存档换成 savedAt 不同的新存档（release 发现 F-79cf48a1ec23）
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('tangshi-gpt', 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('checkpoints', 'readwrite');
+      tx.onabort = () => { db.close(); reject(tx.error); };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      const store = tx.objectStore('checkpoints');
+      const get = store.get('latest');
+      get.onsuccess = () => store.put({ ...get.result, savedAt: get.result.savedAt + 1 }, 'latest');
+    };
+  }));
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByTestId('delete-save').click();
+  await expect(status).toHaveText('没有删除：别的页面刚存了新存档，刷新后可以看到');
+  await page.reload();
+  await waitReady(page);
+  await expect(status).toHaveText(/^发现存档：第 0 步/);
+});

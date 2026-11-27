@@ -271,10 +271,10 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     deleteBtn.addEventListener('click', () => {
       if (!confirm('确定删除存档？')) return;
       return runSaveAction(async () => {
-        await deleteCheckpoint(checkpoint?.savedAt);
+        const deleted = await deleteCheckpoint(checkpoint?.savedAt);
         checkpoint = null;
         compatible = false;
-        saveStatus.textContent = '存档已删除';
+        saveStatus.textContent = deleted ? '存档已删除' : '没有删除：别的页面刚存了新存档，刷新后可以看到';
       }, (error) => `无法删除存档：${error instanceof Error ? error.message : String(error)}`);
     });
 

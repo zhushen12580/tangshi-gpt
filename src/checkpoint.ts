@@ -91,12 +91,14 @@ export async function loadCheckpoint(idb = globalThis.indexedDB): Promise<Checkp
 /**
  * 删除要等 IndexedDB 的异步回调才发出请求。确认后马上刷新、主线程又正忙时，新页面先提交，
  * 删除请求根本没发出去，存档又回来了（verify 发现 F-3951d65ec84e）。所以调用时先同步记下 savedAt，
- * 删完再清掉；loadCheckpoint 读到的还是这个存档，就补删。不给 savedAt（不兼容、没有 savedAt 的存档）就直接删
+ * 删完再清掉；loadCheckpoint 读到的还是这个存档，就补删。不给 savedAt（不兼容、没有 savedAt 的存档）就直接删。
+ * 返回 false：存储里已经是别的存档（另一个标签页刚存的），没有删
  */
-export async function deleteCheckpoint(savedAt?: number, idb = globalThis.indexedDB): Promise<void> {
+export async function deleteCheckpoint(savedAt?: number, idb = globalThis.indexedDB): Promise<boolean> {
   if (savedAt !== undefined) withStorage((ls) => ls.setItem(DELETED_KEY, String(savedAt)));
-  // 读和删在同一个写事务里：只删 savedAt 还对得上的存档，别的标签页刚存的新档留着（release 发现 F-79cf48a1ec23）
-  if (idb) await transact(idb, 'readwrite', (store): IDBRequest => {
+  // 读和删在同一个写事务里：只删 savedAt 还对得上的存档，别的标签页刚存的新档留着（release 发现 F-79cf48a1ec23）。
+  // 事务的结果是读到的存档（直接删时是 undefined）
+  const stored: Checkpoint | undefined = idb && await transact(idb, 'readwrite', (store): IDBRequest => {
     if (savedAt === undefined) return store.delete(KEY);
     const request = store.get(KEY);
     request.onsuccess = () => {
@@ -105,4 +107,5 @@ export async function deleteCheckpoint(savedAt?: number, idb = globalThis.indexe
     return request;
   });
   withStorage((ls) => ls.removeItem(DELETED_KEY));
+  return stored === undefined || stored.savedAt === savedAt;
 }

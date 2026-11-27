@@ -139,9 +139,11 @@ test('补删前另一个标签页刚存了新档，新档留着（release 发现
     expect(ls.getItem('tangshi-gpt:deleted')).toBeNull();
     await expect(loadCheckpoint(idb)).resolves.toBe(newer);
 
-    // 用户确认删除第 123 号时，存储里已经是别的标签页的新档：同样不删
-    await deleteCheckpoint(123, idb);
+    // 用户确认删除第 123 号时，存储里已经是别的标签页的新档：同样不删，并告诉调用方没删
+    await expect(deleteCheckpoint(123, idb)).resolves.toBe(false);
     expect(data.get('latest')).toBe(newer);
+    await expect(deleteCheckpoint(456, idb)).resolves.toBe(true);
+    expect(data.has('latest')).toBe(false);
   } finally {
     vi.unstubAllGlobals();
   }
@@ -152,7 +154,7 @@ test('IndexedDB 不可用时拒绝保存，读取和删除按无存档处理', a
   try {
     await expect(saveCheckpoint(checkpoint(), undefined)).rejects.toBeInstanceOf(StorageUnavailableError);
     await expect(loadCheckpoint(undefined)).resolves.toBeNull();
-    await expect(deleteCheckpoint(undefined)).resolves.toBeUndefined();
+    await expect(deleteCheckpoint(undefined)).resolves.toBe(true);
   } finally {
     vi.unstubAllGlobals();
   }
