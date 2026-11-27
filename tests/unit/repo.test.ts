@@ -24,3 +24,15 @@ test('engines.node 与锁定的 Vitest 一致（它的范围最窄，且落在 V
   expect(engines('package.json')).toBe(engines('node_modules/vitest/package.json'));
   expect(JSON.parse(read('package-lock.json')).packages[''].engines.node).toBe(engines('package.json'));
 });
+
+test('仓库地址：README 的 clone 命令和页脚 GitHub 链接指向同一个公开仓库', () => {
+  const REPO = 'https://github.com/zhushen12580/tangshi-gpt';
+  const readme = read('README.md');
+  const html = read('index.html');
+  expect(readme).toContain(`git clone ${REPO}.git`);
+  expect(html).toContain(`<a href="${REPO}">GitHub</a>`);
+  // fork、少了 .git、大小写不同都会让陌生人遇到 404；区分大小写比较
+  const urls = (readme + html).match(/https:\/\/github\.com\/zhushen12580\/[\w.-]*/gi) ?? [];
+  expect(urls.length).toBeGreaterThanOrEqual(2);
+  for (const url of urls) expect([REPO, `${REPO}.git`]).toContain(url);
+});
