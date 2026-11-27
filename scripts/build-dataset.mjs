@@ -79,8 +79,9 @@ async function main() {
   }
 
   const data = { source: 'chinese-poetry/chinese-poetry 全唐诗', commit: COMMIT, license: 'MIT', count: poems.length, poems };
+  // 开头的 BOM 让浏览器按 UTF-8 解码：很多静态服务器（含 vite dev/preview）返回的 text/plain 不带 charset
   const notice =
-    `数据来源：chinese-poetry/chinese-poetry（https://github.com/chinese-poetry/chinese-poetry），commit ${COMMIT}，` +
+    `﻿数据来源：chinese-poetry/chinese-poetry（https://github.com/chinese-poetry/chinese-poetry），commit ${COMMIT}，` +
     `经 opencc-js 繁转简，仅保留格式严格的五言绝句。\n\n${license}\n`;
   await mkdir(OUT_DIR, { recursive: true });
   await writeFile(join(OUT_DIR, 'poems.json'), `${JSON.stringify(data)}\n`);

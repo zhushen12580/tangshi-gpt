@@ -28,8 +28,9 @@ test('4 首预设诗都在数据集中，每个字都在字表中', () => {
   }
 });
 
-test('NOTICE.txt 含 commit 号和 MIT 许可全文', () => {
+test('NOTICE.txt 以 BOM 开头（服务器不带 charset 时浏览器也按 UTF-8 解码），含 commit 号和 MIT 许可全文', () => {
   const notice = readFileSync('public/data/NOTICE.txt', 'utf8');
+  expect(notice.startsWith('﻿数据来源')).toBe(true);
   expect(notice).toContain(COMMIT);
   expect(notice).toContain('Permission is hereby granted');
 });

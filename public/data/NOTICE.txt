@@ -1,4 +1,4 @@
-数据来源：chinese-poetry/chinese-poetry（https://github.com/chinese-poetry/chinese-poetry），commit b8594f81a89752241442f2ce267d6f66f96704ee，经 opencc-js 繁转简，仅保留格式严格的五言绝句。
+﻿数据来源：chinese-poetry/chinese-poetry（https://github.com/chinese-poetry/chinese-poetry），commit b8594f81a89752241442f2ce267d6f66f96704ee，经 opencc-js 繁转简，仅保留格式严格的五言绝句。
 
 The MIT License (MIT)
 

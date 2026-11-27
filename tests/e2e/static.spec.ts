@@ -33,3 +33,12 @@ test('子路径下没有 404', async ({ page }) => {
   await expect(btn).toHaveText('继续');
   expect(failed).toEqual([]);
 });
+
+test('页脚「许可说明」的中文不乱码', async ({ page }) => {
+  // 服务器返回的 text/plain 不带 charset，Chromium 会按 Windows-1252 解码，只能靠文件开头的 BOM 声明 UTF-8
+  await openApp(page);
+  await page.getByRole('link', { name: '许可说明' }).click();
+  await expect(page).toHaveURL(/\/tangshi-gpt\/data\/NOTICE\.txt$/);
+  await expect(page.locator('body')).toContainText('数据来源：chinese-poetry/chinese-poetry');
+  await expect(page.locator('body')).toContainText('Permission is hereby granted');
+});
