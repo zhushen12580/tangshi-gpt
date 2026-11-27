@@ -91,10 +91,18 @@ export async function loadCheckpoint(idb = globalThis.indexedDB): Promise<Checkp
 /**
  * 删除要等 IndexedDB 的异步回调才发出请求。确认后马上刷新、主线程又正忙时，新页面先提交，
  * 删除请求根本没发出去，存档又回来了（verify 发现 F-3951d65ec84e）。所以调用时先同步记下 savedAt，
- * 删完再清掉；loadCheckpoint 读到的还是这个存档，就补删
+ * 删完再清掉；loadCheckpoint 读到的还是这个存档，就补删。不给 savedAt（不兼容、没有 savedAt 的存档）就直接删
  */
 export async function deleteCheckpoint(savedAt?: number, idb = globalThis.indexedDB): Promise<void> {
   if (savedAt !== undefined) withStorage((ls) => ls.setItem(DELETED_KEY, String(savedAt)));
-  if (idb) await transact(idb, 'readwrite', (store) => store.delete(KEY));
+  // 读和删在同一个写事务里：只删 savedAt 还对得上的存档，别的标签页刚存的新档留着（release 发现 F-79cf48a1ec23）
+  if (idb) await transact(idb, 'readwrite', (store): IDBRequest => {
+    if (savedAt === undefined) return store.delete(KEY);
+    const request = store.get(KEY);
+    request.onsuccess = () => {
+      if ((request.result as Checkpoint | undefined)?.savedAt === savedAt) store.delete(KEY);
+    };
+    return request;
+  });
   withStorage((ls) => ls.removeItem(DELETED_KEY));
 }

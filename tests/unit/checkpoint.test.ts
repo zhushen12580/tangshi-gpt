@@ -50,10 +50,16 @@ function fakeIndexedDB(data: Map<string, unknown>): IDBFactory {
     const request = {} as IDBOpenDBRequest & { result: IDBDatabase };
     const transaction = () => {
       const tx = {} as IDBTransaction;
+      let pending = 0;
+      // 请求先触发 onsuccess（回调里还能在同一个事务里发新请求），全部做完才触发 oncomplete
       const run = (fn: () => unknown) => {
-        const result = fn();
-        setTimeout(() => tx.oncomplete?.(new Event('complete')));
-        return { result };
+        const request = { result: fn() } as IDBRequest;
+        pending += 1;
+        setTimeout(() => {
+          request.onsuccess?.(new Event('success'));
+          if (--pending === 0) tx.oncomplete?.(new Event('complete'));
+        });
+        return request;
       };
       tx.objectStore = () => ({
         get: (k: string) => run(() => data.get(k)),
@@ -106,6 +112,36 @@ test('确认删除时先同步记下，删除没来得及提交就离开页面�
     await deleteCheckpoint(456, idb);
     expect(data.has('latest')).toBe(false);
     expect(ls.getItem('tangshi-gpt:deleted')).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('补删前另一个标签页刚存了新档，新档留着（release 发现 F-79cf48a1ec23）', async () => {
+  const ls = fakeLocalStorage();
+  vi.stubGlobal('localStorage', ls);
+  try {
+    const data = new Map<string, unknown>();
+    const idb = fakeIndexedDB(data);
+    await saveCheckpoint(checkpoint(), idb);
+    ls.setItem('tangshi-gpt:deleted', '123'); // 上次确认删除第 123 号，没来得及删完
+    const newer = makeCheckpoint(snapshot, '01234567', config, [], 456);
+    let opens = 0;
+    const racing = {
+      open: (name: string, version?: number) => {
+        // 读到旧存档之后、补删的写事务开始之前，另一个标签页提交了新存档
+        if (++opens === 2) data.set('latest', newer);
+        return idb.open(name, version);
+      },
+    } as IDBFactory;
+    await expect(loadCheckpoint(racing)).resolves.toBeNull();
+    expect(data.get('latest')).toBe(newer);
+    expect(ls.getItem('tangshi-gpt:deleted')).toBeNull();
+    await expect(loadCheckpoint(idb)).resolves.toBe(newer);
+
+    // 用户确认删除第 123 号时，存储里已经是别的标签页的新档：同样不删
+    await deleteCheckpoint(123, idb);
+    expect(data.get('latest')).toBe(newer);
   } finally {
     vi.unstubAllGlobals();
   }
