@@ -124,10 +124,11 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       notice.hidden = status === null;
     };
 
-    // 用控件上当前的温度和格式开关写一首诗，加进生成记录
-    const generate = async (step: number, valLoss: number | null, manual: boolean) => {
-      const temperature = Number(temperatureInput.value);
-      const constrained = constrainBox.checked;
+    const readSettings = () => ({ temperature: Number(temperatureInput.value), constrained: constrainBox.checked });
+    // 按给定的温度和格式开关写一首诗，加进生成记录
+    const generate = async (
+      step: number, valLoss: number | null, manual: boolean, { temperature, constrained } = readSettings(),
+    ) => {
       const poem = await samplePoem((s) => nextTokenLogits(trainer.params, trainer.cfg, s), tokenIds, {
         temperature,
         constrain: constrained,
@@ -270,7 +271,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     deleteBtn.addEventListener('click', () => {
       if (!confirm('确定删除存档？')) return;
       return runSaveAction(async () => {
-        await deleteCheckpoint();
+        await deleteCheckpoint(checkpoint?.savedAt);
         checkpoint = null;
         compatible = false;
         saveStatus.textContent = '存档已删除';
@@ -306,10 +307,13 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     });
     resetBtn.disabled = false;
 
-    // 训练中排到当前这一步之后执行，训练不中断；步数和验证 loss 也在那时才读
-    generateBtn.addEventListener('click', () =>
-      trainer.runBetweenSteps(() => generate(trainer.lossHistory.length, trainer.valHistory.at(-1)?.loss ?? null, true)),
-    );
+    // 训练中排到当前这一步之后执行，训练不中断；步数和验证 loss 在那时才读，
+    // 温度和格式开关按点击时的（排队时调了滑块，不能改掉前一次点击的设置，verify 发现 F-0f8a9dbb12ed）
+    generateBtn.addEventListener('click', () => {
+      const settings = readSettings();
+      return trainer.runBetweenSteps(() =>
+        generate(trainer.lossHistory.length, trainer.valHistory.at(-1)?.loss ?? null, true, settings));
+    });
     generateBtn.disabled = false;
   })
   .catch((err) => {

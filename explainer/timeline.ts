@@ -86,6 +86,7 @@ const CAPTION_MIN = 2; // 每条字幕至少显示的秒数
 // 重录后字幕变长、超过 90 秒时，再按规格下限 8 字/秒排（review 发现 F-b4ea32f7f59f）
 const CHARS_PER_SECOND = [7.5, 8];
 const DURATION = { min: 60, max: 90 }; // 总长（秒）
+export const FPS = 30; // 视频帧率，render.ts 按 i / FPS 秒画第 i 帧
 export const TRANSITION = 0.5; // 分镜之间的过渡秒数
 export const PEAK_ROW = 10; // 注意力分镜看第 10 位「海」那一行
 
@@ -165,15 +166,21 @@ function sceneTexts(t: Trace): [string, string[]][] {
   ];
 }
 
-/** 字幕依次出现，每条 max(CAPTION_MIN, 字数 / rate) 秒；分镜之间过渡 TRANSITION 秒 */
+/**
+ * 字幕依次出现，每条 max(CAPTION_MIN, 字数 / rate) 秒；分镜之间过渡 TRANSITION 秒。
+ * 都按整帧排、向上取整，时刻写成「帧号 / FPS」，和渲染时第 i 帧的 i / FPS 完全相同：
+ * 按每秒 8 字排时一个字 3.75 帧，按实数秒排会让字幕少 1 帧（verify 发现 F-a74aa2f447ad）
+ */
 function layout(texts: [string, string[]][], rate: number): Timeline {
-  let at = -TRANSITION;
+  const toFrames = (seconds: number) => Math.ceil(seconds * FPS - 1e-9); // 1e-9：整帧的秒数乘回来可能多出一点浮点误差
+  let at = -toFrames(TRANSITION);
   const scenes = texts.map(([name, captionTexts], id) => {
-    const start = (at += TRANSITION);
-    const captions = captionTexts.map((text) => ({ text, start: at, end: (at += Math.max(CAPTION_MIN, [...text].length / rate)) }));
-    return { id, name, start, end: at, captions };
+    const start = (at += toFrames(TRANSITION)) / FPS;
+    const captions = captionTexts.map((text) =>
+      ({ text, start: at / FPS, end: (at += toFrames(Math.max(CAPTION_MIN, [...text].length / rate))) / FPS }));
+    return { id, name, start, end: at / FPS, captions };
   });
-  return { scenes, duration: at };
+  return { scenes, duration: at / FPS };
 }
 
 /** 按 CHARS_PER_SECOND 依次试，用第一个不超过 90 秒的；怎么排都不在 60–90 秒内就报错，渲染命令以非 0 退出，不写视频 */

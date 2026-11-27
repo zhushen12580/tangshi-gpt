@@ -3,9 +3,8 @@
 
 import { BufferTarget, CanvasSource, Mp4OutputFormat, Output } from 'mediabunny';
 import { HEIGHT, WIDTH, drawFrame } from './scenes';
-import { buildTimeline, transcript, type Trace } from './timeline';
+import { FPS, buildTimeline, transcript, type Trace } from './timeline';
 
-const FPS = 30;
 const BITRATE = 300_000; // 画面大多是静止的文字，300 kbps 够清楚；4 MiB ÷ 90 秒 ≈ 370 kbps 是上限
 
 interface RenderResult { mp4: string; duration: number; transcript: string; scenes: { id: number; name: string; mid: number }[] }

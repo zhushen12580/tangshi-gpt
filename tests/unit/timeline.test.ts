@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { buildTimeline, formatPercent, traceErrors, transcript, type Timeline, type Trace } from '../../explainer/timeline';
+import { FPS, buildTimeline, formatPercent, traceErrors, transcript, type Caption, type Timeline, type Trace } from '../../explainer/timeline';
 import { guessCount } from '../../src/explain';
 import presets from '../../src/presets.json';
 
@@ -11,13 +11,20 @@ const scene = (name: string, t = tl) => t.scenes.find((s) => s.name === name)!.c
 const pct = formatPercent;
 const nll = (p: number) => (-Math.log(p)).toFixed(2);
 
-/** 每条字幕显示 ≥ max(2, 字数 / 8) 秒（规格下限），依次出现，总长 60–90 秒 */
+/** 渲染时第 i 帧画的是 i / FPS 秒（explainer/render.ts）：数出这条字幕实际出现在多少帧上 */
+const framesShown = (c: Caption, duration: number) =>
+  Array.from({ length: Math.round(duration * FPS) }, (_, i) => i / FPS).filter((time) => time >= c.start && time < c.end).length;
+
+/** 每条字幕显示 ≥ max(2, 字数 / 8) 秒（规格下限），按 30 fps 数帧也够，依次出现，总长 60–90 秒 */
 function expectReadable(t: Timeline) {
   let last = 0;
   for (const s of t.scenes) {
     expect(s.start).toBeGreaterThanOrEqual(last);
     for (const c of s.captions) {
-      expect(c.end - c.start).toBeGreaterThanOrEqual(Math.max(2, [...c.text].length / 8));
+      const min = Math.max(2, [...c.text].length / 8);
+      expect(c.end - c.start).toBeGreaterThanOrEqual(min - 1e-9); // 两个「帧号 / FPS」相减有浮点误差；下面按帧数是精确的
+      // 只看秒数不够：按每秒 8 字排时一个字 3.75 帧，以前采样会少 1 帧（verify 发现 F-a74aa2f447ad）
+      expect(framesShown(c, t.duration) / FPS, c.text).toBeGreaterThanOrEqual(min);
       expect(c.start).toBeGreaterThanOrEqual(last);
       last = c.end;
     }

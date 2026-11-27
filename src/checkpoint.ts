@@ -68,11 +68,33 @@ export async function saveCheckpoint(c: Checkpoint, idb = globalThis.indexedDB):
   await transact(idb, 'readwrite', (store) => store.put(c, KEY));
 }
 
+const DELETED_KEY = 'tangshi-gpt:deleted'; // localStorage：已确认删除、可能还没删掉的存档的 savedAt
+// localStorage 被禁用或不存在时访问就抛错，这时不记号，只做原来的异步删除
+const withStorage = <T>(fn: (ls: Storage) => T): T | undefined => {
+  try {
+    return fn(globalThis.localStorage);
+  } catch {
+    return undefined;
+  }
+};
+
 export async function loadCheckpoint(idb = globalThis.indexedDB): Promise<Checkpoint | null> {
   if (!idb) return null;
-  return (await transact<Checkpoint | undefined>(idb, 'readonly', (store) => store.get(KEY))) ?? null;
+  const c = (await transact<Checkpoint | undefined>(idb, 'readonly', (store) => store.get(KEY))) ?? null;
+  if (c && withStorage((ls) => ls.getItem(DELETED_KEY)) === String(c.savedAt)) {
+    await deleteCheckpoint(c.savedAt, idb); // 上次确认删除后没来得及删完：补删，当作没有存档
+    return null;
+  }
+  return c;
 }
 
-export async function deleteCheckpoint(idb = globalThis.indexedDB): Promise<void> {
+/**
+ * 删除要等 IndexedDB 的异步回调才发出请求。确认后马上刷新、主线程又正忙时，新页面先提交，
+ * 删除请求根本没发出去，存档又回来了（verify 发现 F-3951d65ec84e）。所以调用时先同步记下 savedAt，
+ * 删完再清掉；loadCheckpoint 读到的还是这个存档，就补删
+ */
+export async function deleteCheckpoint(savedAt?: number, idb = globalThis.indexedDB): Promise<void> {
+  if (savedAt !== undefined) withStorage((ls) => ls.setItem(DELETED_KEY, String(savedAt)));
   if (idb) await transact(idb, 'readwrite', (store) => store.delete(KEY));
+  withStorage((ls) => ls.removeItem(DELETED_KEY));
 }

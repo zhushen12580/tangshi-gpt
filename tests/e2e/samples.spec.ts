@@ -102,3 +102,22 @@ test('采样控件与键盘', async ({ page }) => {
   await btn.click();
   await expect(btn).toHaveText('继续', { timeout: 60_000 });
 });
+
+test('排队中的「立即生成」按点击时的温度和格式开关写', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  // 在同一个任务里：0.8、约束时点一次，调到 1.5、取消约束再点一次。两次都排在队里，
+  // 以前排到时才读控件，两条都成了「1.5 · 自由」（verify 发现 F-0f8a9dbb12ed）
+  await page.evaluate(() => {
+    const get = (id: string) => document.querySelector<HTMLInputElement>(`[data-testid="${id}"]`)!;
+    get('generate').click();
+    get('temperature').value = '1.5';
+    get('temperature').dispatchEvent(new Event('input', { bubbles: true }));
+    get('constrain').click();
+    get('generate').click();
+  });
+  const metas = page.getByTestId('sample-item').locator('.sample-meta');
+  await expect(metas).toHaveCount(2, { timeout: 60_000 });
+  await expect(metas.nth(1)).toContainText('手动 · 温度 0.8 · 约束'); // 先点的在下面
+  await expect(metas.nth(0)).toContainText('手动 · 温度 1.5 · 自由');
+});

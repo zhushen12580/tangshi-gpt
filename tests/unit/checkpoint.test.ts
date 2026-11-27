@@ -44,6 +44,73 @@ test('保存失败时区分存储不可用、配额不足和其他错误', () =>
   expect(storageErrorMessage(new Error('x'))).toBe('无法保存：x');
 });
 
+/** 够 checkpoint.ts 用的内存版 IndexedDB：回调都异步触发，和浏览器一样 */
+function fakeIndexedDB(data: Map<string, unknown>): IDBFactory {
+  const open = () => {
+    const request = {} as IDBOpenDBRequest & { result: IDBDatabase };
+    const transaction = () => {
+      const tx = {} as IDBTransaction;
+      const run = (fn: () => unknown) => {
+        const result = fn();
+        setTimeout(() => tx.oncomplete?.(new Event('complete')));
+        return { result };
+      };
+      tx.objectStore = () => ({
+        get: (k: string) => run(() => data.get(k)),
+        put: (v: unknown, k: string) => run(() => data.set(k, v) && k),
+        delete: (k: string) => run(() => void data.delete(k)),
+      }) as unknown as IDBObjectStore;
+      return tx;
+    };
+    setTimeout(() => {
+      Object.assign(request, { result: { transaction, close: () => {} } });
+      request.onsuccess?.(new Event('success'));
+    });
+    return request;
+  };
+  return { open } as unknown as IDBFactory;
+}
+
+function fakeLocalStorage(): Storage {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+  } as Storage;
+}
+
+test('确认删除时先同步记下，删除没来得及提交就离开页面，下次读到同一个存档也当已删除', async () => {
+  const ls = fakeLocalStorage();
+  vi.stubGlobal('localStorage', ls);
+  try {
+    const data = new Map<string, unknown>();
+    const idb = fakeIndexedDB(data);
+    await saveCheckpoint(checkpoint(), idb);
+    // 删除请求要等 IndexedDB 异步回调才发出；记号必须在调用的这一刻就写好（verify 发现 F-3951d65ec84e）
+    const pending = deleteCheckpoint(123, fakeIndexedDB(new Map())); // 模拟“这次删除丢了”：真正的数据没动
+    expect(ls.getItem('tangshi-gpt:deleted')).toBe('123');
+    await pending;
+    ls.setItem('tangshi-gpt:deleted', '123'); // 页面在删除完成前就走了，记号还在
+    expect(data.has('latest')).toBe(true);
+    await expect(loadCheckpoint(idb)).resolves.toBeNull();
+    expect(data.has('latest')).toBe(false); // 补删了
+    expect(ls.getItem('tangshi-gpt:deleted')).toBeNull();
+
+    // 之后新存的档（savedAt 不同）不受旧记号影响
+    ls.setItem('tangshi-gpt:deleted', '123');
+    await saveCheckpoint(makeCheckpoint(snapshot, '01234567', config, [], 456), idb);
+    await expect(loadCheckpoint(idb)).resolves.toMatchObject({ savedAt: 456 });
+
+    // 正常删除：删完记号清掉
+    await deleteCheckpoint(456, idb);
+    expect(data.has('latest')).toBe(false);
+    expect(ls.getItem('tangshi-gpt:deleted')).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 test('IndexedDB 不可用时拒绝保存，读取和删除按无存档处理', async () => {
   vi.stubGlobal('indexedDB', undefined);
   try {

@@ -130,3 +130,30 @@ test('不兼容的存档只能删除', async ({ page }) => {
   await waitReady(page);
   await expect(status).toHaveText('');
 });
+
+test('确认删除后马上重新打开页面，主线程正忙也不会让存档回来', async ({ page }) => {
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  const status = page.getByTestId('save-status');
+  await page.getByTestId('save').click();
+  await expect(status).toHaveText('已保存：第 0 步', { timeout: 60_000 });
+  await page.reload();
+  await waitReady(page);
+  await expect(status).toHaveText(/^发现存档：第 0 步/);
+  // 确认删除后主线程被占住 800 ms（机器忙、热力图在算），这期间重新打开首页：新页面先提交，
+  // IndexedDB 的回调还没轮到，以前删除请求根本没发出去，存档又回来了（verify 发现 F-3951d65ec84e）
+  await page.evaluate(() => setTimeout(() => {
+    window.confirm = () => true;
+    document.querySelector<HTMLButtonElement>('[data-testid="delete-save"]')!.click();
+    const t = performance.now();
+    while (performance.now() - t < 800);
+  }, 50));
+  await page.waitForTimeout(60);
+  await openApp(page, '?backend=webgl');
+  await waitReady(page);
+  await expect(status).toHaveText('');
+  await expect(page.getByTestId('load')).toBeDisabled();
+  await page.reload();
+  await waitReady(page);
+  await expect(status).toHaveText('');
+});
