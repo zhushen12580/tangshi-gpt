@@ -10,10 +10,11 @@
     <header>
       <h1>唐诗 GPT</h1>
       <p>不装 Python、不要显卡驱动、不要 API key，打开网页，看一个 GPT 在你的浏览器里从零学会写五言绝句。</p>
+      <p data-testid="explain-intro">它只做一件事：根据前面的字，猜下一个字。一个字一个字猜满 24 个（20 个字加 4 个标点），就是一首五言绝句。训练就是让它反复去猜真唐诗、对答案，再把参数往猜对的方向挪一点。</p>
       <dl class="meta">
-        <div><dt>后端</dt><dd class="badge" data-testid="backend">—</dd></div>
+        <div><dt>后端 <button type="button" class="help" popovertarget="help-backend-text" data-testid="help-backend" aria-label="说明：后端">?</button></dt><dd class="badge" data-testid="backend">—</dd></div>
         <div><dt>参数量</dt><dd data-testid="params">—</dd></div>
-        <div><dt>随机基线 ln(V)</dt><dd data-testid="loss-baseline">—</dd></div>
+        <div><dt>随机基线 ln(V) <button type="button" class="help" popovertarget="help-baseline-text" data-testid="help-baseline" aria-label="说明：随机基线">?</button></dt><dd data-testid="loss-baseline">—</dd></div>
       </dl>
       <p class="notice" data-testid="backend-notice" hidden></p>
       <p data-testid="dataset-info">数据集：加载中…</p>
@@ -30,8 +31,11 @@
           <input type="range" data-testid="temperature" min="0.1" max="1.5" step="0.1" value="0.8" aria-label="温度" />
           <output data-testid="temperature-value">0.8</output>
         </label>
+        <button type="button" class="help" popovertarget="help-temperature-text" data-testid="help-temperature" aria-label="说明：温度">?</button>
         <label><input type="checkbox" data-testid="constrain" checked /> 强制五绝格式</label>
+        <button type="button" class="help" popovertarget="help-constrain-text" data-testid="help-constrain" aria-label="说明：强制五绝格式">?</button>
         <button type="button" data-testid="generate" disabled>立即生成</button>
+        <button type="button" class="help" popovertarget="help-generate-text" data-testid="help-generate" aria-label="说明：立即生成">?</button>
         <button type="button" data-testid="save" disabled>保存</button>
         <button type="button" data-testid="load" disabled>载入</button>
         <button type="button" data-testid="ignore-save" hidden>忽略</button>
@@ -44,17 +48,17 @@
           <h2>训练</h2>
           <dl class="meta">
             <div><dt>步数</dt><dd data-testid="step">0</dd></div>
-            <div><dt>初始 loss</dt><dd data-testid="loss-initial">—</dd></div>
-            <div><dt>当前 loss</dt><dd data-testid="loss-current">—</dd></div>
-            <div><dt>验证 loss</dt><dd data-testid="loss-val">—</dd></div>
-            <div><dt>步/秒</dt><dd data-testid="speed">0.0</dd></div>
+            <div><dt>初始 loss <button type="button" class="help" popovertarget="help-loss-initial-text" data-testid="help-loss-initial" aria-label="说明：初始 loss">?</button></dt><dd data-testid="loss-initial">—</dd></div>
+            <div><dt>当前 loss <button type="button" class="help" popovertarget="help-loss-current-text" data-testid="help-loss-current" aria-label="说明：当前 loss">?</button></dt><dd data-testid="loss-current">—</dd></div>
+            <div><dt>验证 loss <button type="button" class="help" popovertarget="help-loss-val-text" data-testid="help-loss-val" aria-label="说明：验证 loss">?</button></dt><dd data-testid="loss-val">—</dd></div>
+            <div><dt>步/秒 <button type="button" class="help" popovertarget="help-speed-text" data-testid="help-speed" aria-label="说明：步/秒">?</button></dt><dd data-testid="speed">0.0</dd></div>
             <div><dt>已训练</dt><dd data-testid="elapsed">00:00</dd></div>
           </dl>
           <div class="chart">
             <canvas data-testid="loss-chart" role="img" aria-label="训练 loss 曲线"></canvas>
             <p class="empty" data-testid="loss-empty">点击「开始训练」后这里会画出 loss 曲线</p>
           </div>
-          <p class="legend">细线：每步训练 loss · 粗线：平滑后（EMA）· 朱砂圆点：验证 loss</p>
+          <p class="legend">细线：每步训练 loss · 粗线：平滑后（EMA）· 朱砂圆点：验证 loss <button type="button" class="help" popovertarget="help-ema-text" data-testid="help-ema" aria-label="说明：EMA 粗线">?</button></p>
         </section>
         <section>
           <h2>生成记录</h2>
@@ -62,7 +66,10 @@
         </section>
       </div>
       <section>
-        <h2>注意力</h2>
+        <div class="heading">
+          <h2>注意力</h2>
+          <button type="button" class="help" popovertarget="help-heatmap-text" data-testid="help-heatmap" aria-label="说明：注意力热力图">?</button>
+        </div>
         <form class="controls">
           <label>诗句 <select data-testid="heatmap-select" disabled></select></label>
           <label>自定义 <input data-testid="heatmap-input" aria-label="自定义诗" disabled /></label>
@@ -71,6 +78,18 @@
         <p class="notice" data-testid="heatmap-error" role="alert"></p>
         <div data-testid="heatmap"><p class="empty">数据加载后显示注意力热力图</p></div>
       </section>
+      <!-- 「?」的说明卡片：原生 Popover，开关、Esc、点别处关闭都由浏览器处理 -->
+      <div popover id="help-backend-text" data-testid="help-backend-text">这是用来算的硬件。WebGPU、WebGL 用显卡算，比较快；CPU 不用显卡，会非常慢。</div>
+      <div popover id="help-baseline-text" data-testid="help-baseline-text">loss 是猜错扣的分，e 的 loss 次方 ≈ 相当于在多少个字里瞎蒙。完全瞎猜就是在全部 <span data-fill="vocab">—</span> 个字里蒙，loss = ln <span data-fill="vocab">—</span> ≈ <span data-fill="ln-vocab">—</span>。</div>
+      <div popover id="help-loss-initial-text" data-testid="help-loss-initial-text">第 1 步的 loss。这时参数是随机的，模型等于瞎猜，所以它应该和随机基线差不多。</div>
+      <div popover id="help-loss-current-text" data-testid="help-loss-current-text">最近 10 步 loss 的平均，越低说明猜得越准。<span data-testid="loss-current-guess">还没开始训练。</span></div>
+      <div popover id="help-loss-val-text" data-testid="help-loss-val-text">用藏起来、从不给它学的 <span data-fill="val-count">—</span> 首诗做的模拟考，每 50 步考一次。训练 loss 还在降、它却回升，说明模型开始背诗了。</div>
+      <div popover id="help-ema-text" data-testid="help-ema-text">细线是每一步的 loss，上下跳得厉害；粗线是平滑后的走势：每一步取九成旧值加一成新值。</div>
+      <div popover id="help-speed-text" data-testid="help-speed-text">每秒训练几步。每一步拿 <span data-fill="batch">—</span> 首诗来猜、对答案、改参数；快慢取决于显卡。</div>
+      <div popover id="help-temperature-text" data-testid="help-temperature-text">挑字时有多敢冒险。温度低就挑最有把握的字，稳但单调；温度高就常挑冷门字，新奇但容易乱。</div>
+      <div popover id="help-constrain-text" data-testid="help-constrain-text">这是硬规则，不是模型学会的：第 6、12、18、24 个位置强制放「，。，。」，别的位置不许放这两个标点。关掉它，才能看出模型自己有没有学会格式。</div>
+      <div popover id="help-generate-text" data-testid="help-generate-text">用现在的模型、按当前的温度和格式设置马上写一首。训练中点它，会等这一步算完再写，不打断训练。</div>
+      <div popover id="help-heatmap-text" data-testid="help-heatmap-text">模型猜下一个字时，会回头看前面的字。每一行是一个字，颜色越深，表示它猜下一个字时越看重那一列的字；12 张小图是 3 层 × 4 个头，各看各的。</div>
     </main>
     <footer>
       <a href="https://github.com/chinese-poetry/chinese-poetry">数据来源：chinese-poetry（MIT）</a> ·

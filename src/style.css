@@ -238,3 +238,37 @@ h1 {
   width: 100%;
   aspect-ratio: 1;
 }
+
+/* 「?」小圆按钮：点击区域至少 24×24px，焦点框沿用 :focus-visible */
+.help {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.8em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+/* 说明卡片固定在屏幕下方居中，不跟随按钮定位；窄屏下也不出屏 */
+[popover] {
+  position: fixed;
+  inset: auto 0 1rem 0;
+  box-sizing: border-box;
+  max-width: min(28rem, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--cinnabar);
+  border-radius: 0.25em;
+  background: #fffaf0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  line-height: 1.6;
+  box-shadow: 0 0.25rem 1rem rgb(31 26 23 / 0.2);
+}

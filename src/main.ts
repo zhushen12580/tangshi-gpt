@@ -5,6 +5,7 @@ import {
   type Checkpoint,
 } from './checkpoint';
 import { BOS, decode, encode, loadDataset, validateCustomPoem, type Dataset } from './data';
+import { guessText } from './explain';
 import { MODEL_DEFAULTS, attentionMaps, countParams, nextTokenLogits } from './model';
 import presets from './presets.json';
 import { isWujue, pushSample, samplePoem, type SampleRecord } from './sample';
@@ -34,6 +35,7 @@ function renderStats(s: TrainStats): void {
   $('step').textContent = String(s.step);
   $('loss-initial').textContent = fmtLoss(s.initialLoss);
   $('loss-current').textContent = fmtLoss(s.currentLoss);
+  $('loss-current-guess').textContent = guessText(s.currentLoss);
   $('speed').textContent = s.stepsPerSec.toFixed(1);
   $('elapsed').textContent = fmtElapsed(s.elapsedMs);
 }
@@ -75,6 +77,12 @@ Promise.all([backendReady, loadDatasetWithRetry()])
     const tokenIds = { bos: ds.bosId, comma: ds.stoi.get('，')!, period: ds.stoi.get('。')! };
     $('dataset-info').textContent = `数据集：${ds.poems.length} 首五言绝句 · 字表 ${V} 字 · 来自 chinese-poetry（MIT）`;
     $('loss-baseline').textContent = Math.log(V).toFixed(3);
+    const batchSize = backend === 'cpu' ? CPU_BATCH_SIZE : BATCH_SIZE;
+    // 说明卡片里的数字从数据和后端算出来，不写死
+    const fills: Record<string, string> = {
+      vocab: String(V), 'ln-vocab': Math.log(V).toFixed(2), 'val-count': String(ds.val.length), batch: String(batchSize),
+    };
+    document.querySelectorAll<HTMLElement>('[data-fill]').forEach((el) => (el.textContent = fills[el.dataset.fill!]));
 
     const heatmapSelect = $('heatmap-select') as HTMLSelectElement;
     const latest = new Option('最新生成的诗', 'latest');
@@ -126,7 +134,7 @@ Promise.all([backendReady, loadDatasetWithRetry()])
       train: ds.train,
       val: ds.val,
       bosId: ds.bosId,
-      batchSize: backend === 'cpu' ? CPU_BATCH_SIZE : BATCH_SIZE,
+      batchSize,
       microBatch: backend === 'cpu' ? CPU_MICRO_BATCH : undefined,
       onStep: (s) => {
         renderStats(s);
